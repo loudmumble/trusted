@@ -1,0 +1,1 @@
+V-006 verified and committed. Tasks remain (V-007, V-008 still `passes: false`). Exiting as required by fresh-context mode.

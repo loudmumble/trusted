@@ -1,0 +1,30 @@
+# Binaries
+/trusted
+/ted
+/certstrike
+*.exe
+/smartpotato
+implants/smartpotato/smartpotato
+implants/smartpotato/smartpotato.exe
+implants/smartpotato/smartpotato_linux
+dist/
+build/
+
+# Go build artifacts
+*.test
+*.out
+*.prof
+
+# Vendor
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

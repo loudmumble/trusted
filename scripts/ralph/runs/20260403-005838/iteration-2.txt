@@ -1,0 +1,1 @@
+V-002 verified and committed. Tasks remain (`passes: false` on V-003 through V-008), so exiting per fresh-context protocol.

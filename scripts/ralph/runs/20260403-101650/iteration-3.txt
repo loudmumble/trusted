@@ -1,0 +1,1 @@
+V-011 complete. V-012 still has `passes: false`, so tasks remain. Exiting per fresh-context protocol.

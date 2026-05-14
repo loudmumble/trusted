@@ -1,0 +1,1 @@
+V-010 verified and committed. Remaining tasks (V-011, V-012) still have `passes: false` — exiting for next iteration.
