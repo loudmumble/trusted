@@ -1,3 +1,0 @@
-All 8 verification tasks pass. Build clean, tests green, no warnings.
-
-<promise>COMPLETE</promise>

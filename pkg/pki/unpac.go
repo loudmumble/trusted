@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
-	"time"
 
 	krbcrypto "github.com/jcmturner/gokrb5/v8/crypto"
 	"github.com/jcmturner/gokrb5/v8/iana/keyusage"
@@ -409,12 +408,6 @@ func PrintUnPACGuidance(pfxPath, pfxPass, dc, domain, upn string) {
 	fmt.Printf("    evil-winrm -i <DC_IP> -u %s -H <NTHASH>\n", user)
 }
 
-// PrintUnPACCommands is a compatibility alias for PrintUnPACGuidance.
 func PrintUnPACCommands(pfxPath, pfxPass, dc, domain, upn string) {
 	PrintUnPACGuidance(pfxPath, pfxPass, dc, domain, upn)
 }
-
-// Unused import guards
-var (
-	_ = time.Now
-)

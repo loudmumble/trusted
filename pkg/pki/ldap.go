@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-ldap/ldap/v3"
+	"github.com/loudmumble/trusted/pkg/util"
 )
 
 // ADCSConfig defines the target information for Active Directory Certificate Services.
@@ -67,48 +68,20 @@ func stealthPageDelay(cfg *ADCSConfig) {
 	time.Sleep(time.Duration(100+mathrand.Intn(300)) * time.Millisecond)
 }
 
-// buildCertTemplateBaseDN constructs the LDAP base DN for certificate templates.
 func buildCertTemplateBaseDN(domain string) string {
-	parts := strings.Split(domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	return "CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration," + strings.Join(dcParts, ",")
+	return util.BuildLDAPBaseDN(domain, "CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration")
 }
 
-// buildBindDN constructs a bind DN from username and domain.
-// Supports: user, user@domain, domain\user, domain/user, CN=user,...
 func buildBindDN(username, domain string) string {
-	if strings.HasPrefix(username, "CN=") {
-		return username
-	}
-	if strings.Contains(username, "@") {
-		return username
-	}
-	if idx := strings.LastIndexAny(username, "\\/"); idx >= 0 {
-		return username[idx+1:] + "@" + domain
-	}
-	return username + "@" + domain
+	return util.BuildBindDN(username, domain)
 }
 
-// normalizeUsername strips domain prefix (domain\user, domain/user) and returns
-// the bare sAMAccountName. Used for NTLM auth and Kerberos principal construction.
 func normalizeUsername(username string) string {
-	if idx := strings.LastIndexAny(username, "\\/"); idx >= 0 {
-		return username[idx+1:]
-	}
-	return username
+	return util.NormalizeUsername(username)
 }
 
-// buildCABaseDN returns the LDAP base DN for the Certification Authorities container.
 func buildCABaseDN(domain string) string {
-	parts := strings.Split(domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	return "CN=Certification Authorities,CN=Public Key Services,CN=Services,CN=Configuration," + strings.Join(dcParts, ",")
+	return util.BuildLDAPBaseDN(domain, "CN=Certification Authorities,CN=Public Key Services,CN=Services,CN=Configuration")
 }
 
 // ConnectLDAP establishes a connection to the DC's LDAP service with context.

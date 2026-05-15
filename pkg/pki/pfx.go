@@ -63,10 +63,8 @@ func LoadPFX(path, password string) (*x509.Certificate, crypto.PrivateKey, error
 		}
 	}
 
-	// Identify key type
-	switch k := key.(type) {
+	switch key.(type) {
 	case interface{ Public() crypto.PublicKey }:
-		_ = k
 		fmt.Printf("    Key type:   %T\n", key)
 	default:
 		fmt.Printf("    Key type:   %T\n", key)

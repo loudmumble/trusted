@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-ldap/ldap/v3"
+	"github.com/loudmumble/trusted/pkg/util"
 )
 
 // ifEnforceEncryptICertRequest is the CA flag bit for IF_ENFORCEENCRYPTICERTREQUEST.
@@ -46,14 +47,8 @@ type ESC11Finding struct {
 	EnforcesEncryption bool   `json:"enforces_encryption"`
 }
 
-// buildEnrollmentServicesBaseDN returns the LDAP base DN for the Enrollment Services container.
 func buildEnrollmentServicesBaseDN(domain string) string {
-	parts := strings.Split(domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	return "CN=Enrollment Services,CN=Public Key Services,CN=Services,CN=Configuration," + strings.Join(dcParts, ",")
+	return util.BuildLDAPBaseDN(domain, "CN=Enrollment Services,CN=Public Key Services,CN=Services,CN=Configuration")
 }
 
 // EnumerateEnrollmentServices queries LDAP for pKIEnrollmentService objects under the

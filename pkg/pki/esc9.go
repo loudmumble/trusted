@@ -5,9 +5,9 @@ import (
 	"crypto"
 	"crypto/x509"
 	"fmt"
-	"strings"
 
 	"github.com/go-ldap/ldap/v3"
+	"github.com/loudmumble/trusted/pkg/util"
 )
 
 // ctFlagNoSecurityExtension is the msPKI-Enrollment-Flag bit that suppresses
@@ -249,13 +249,6 @@ func ExploitESC9(ctx context.Context, cfg *ADCSConfig, conn *ldap.Conn, template
 	return cert, certKey, nil
 }
 
-// buildDomainDN constructs the LDAP domain root DN from a dotted domain name.
-// E.g., "corp.local" -> "DC=corp,DC=local"
 func buildDomainDN(domain string) string {
-	parts := strings.Split(domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	return strings.Join(dcParts, ",")
+	return util.BuildDomainDN(domain)
 }

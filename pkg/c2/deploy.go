@@ -83,7 +83,10 @@ func (l *Listener) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	b := make([]byte, 8)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		http.Error(w, "failed to generate delivery ID", http.StatusInternalServerError)
+		return
+	}
 	deliveryID := hex.EncodeToString(b)
 
 	delivery := FileDelivery{

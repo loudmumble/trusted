@@ -1,1 +1,0 @@
-V-012 complete. Remaining failing tasks: V-013, V-014, V-015. Exiting as per fresh-context mode rules — one task per iteration.

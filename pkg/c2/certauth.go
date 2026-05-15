@@ -90,10 +90,12 @@ func GenerateCertAuthImplant(c2URL, upn, outputDir string) (*CertAuthImplantConf
 	if err != nil {
 		return nil, fmt.Errorf("create cert file: %w", err)
 	}
-	pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	if err := pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}); err != nil {
+		certFile.Close()
+		return nil, fmt.Errorf("encode cert PEM: %w", err)
+	}
 	certFile.Close()
 
-	// Write key PEM
 	keyPath := outputDir + "/" + upnUser + "-implant-key.pem"
 	keyFile, err := os.Create(keyPath)
 	if err != nil {
@@ -101,13 +103,19 @@ func GenerateCertAuthImplant(c2URL, upn, outputDir string) (*CertAuthImplantConf
 	}
 	keyDER, err := x509.MarshalECPrivateKey(implantKey)
 	if err != nil {
+		keyFile.Close()
 		return nil, fmt.Errorf("marshal key: %w", err)
 	}
-	pem.Encode(keyFile, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	if err := pem.Encode(keyFile, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}); err != nil {
+		keyFile.Close()
+		return nil, fmt.Errorf("encode key PEM: %w", err)
+	}
 	keyFile.Close()
 
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return nil, fmt.Errorf("generate random ID: %w", err)
+	}
 
 	config := &CertAuthImplantConfig{
 		ID:       hex.EncodeToString(b),

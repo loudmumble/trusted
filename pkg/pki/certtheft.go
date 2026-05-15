@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-ldap/ldap/v3"
+	"github.com/loudmumble/trusted/pkg/util"
 )
 
 // ExtractUserCertificatesLDAP queries Active Directory for userCertificate
@@ -26,12 +27,7 @@ func ExtractUserCertificatesLDAP(cfg *ADCSConfig, outputDir string) (int, error)
 	}
 	defer conn.Close()
 
-	parts := strings.Split(cfg.Domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	baseDN := strings.Join(dcParts, ",")
+	baseDN := util.BuildDomainDN(cfg.Domain)
 
 	searchReq := ldap.NewSearchRequest(
 		baseDN, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases,

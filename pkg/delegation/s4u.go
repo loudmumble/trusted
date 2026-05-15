@@ -169,7 +169,9 @@ func parseSPN(spn string) (string, string) {
 
 func generateRandomBytes(n int) []byte {
 	b := make([]byte, n)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("failed to generate random bytes: %v", err))
+	}
 	return b
 }
 

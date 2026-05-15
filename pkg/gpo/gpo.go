@@ -3,6 +3,8 @@ package gpo
 import (
 	"fmt"
 	"strings"
+
+	"github.com/loudmumble/trusted/pkg/util"
 )
 
 const (
@@ -257,21 +259,11 @@ type AttackStep struct {
 }
 
 func buildGPOBaseDN(domain string) string {
-	parts := strings.Split(domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	return gpoBaseDN + "," + strings.Join(dcParts, ",")
+	return util.BuildLDAPBaseDN(domain, gpoBaseDN)
 }
 
 func buildDomainDN(domain string) string {
-	parts := strings.Split(domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	return strings.Join(dcParts, ",")
+	return util.BuildDomainDN(domain)
 }
 
 func parseGPLinkString(gplink string) []GPLink {

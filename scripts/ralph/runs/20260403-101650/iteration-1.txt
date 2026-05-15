@@ -1,1 +1,0 @@
-V-009 complete. Checking remaining tasks — V-010, V-011, V-012 still have `passes: false`. Exiting per fresh-context mode rules (ONE task per iteration).

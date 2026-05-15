@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"math/big"
@@ -213,7 +212,9 @@ func PKINITAuth(cfg *PKINITConfig) (*PKINITResult, error) {
 
 	// Generate request nonce
 	nonceBytes := make([]byte, 4)
-	rand.Read(nonceBytes)
+	if _, err := rand.Read(nonceBytes); err != nil {
+		return nil, fmt.Errorf("generate nonce: %w", err)
+	}
 	nonce := int(binary.BigEndian.Uint32(nonceBytes) & 0x7FFFFFFF) // positive int32
 
 	// Build KDC-REQ-BODY
@@ -1090,6 +1091,3 @@ exit 1
 	fmt.Printf("[+] PKINIT script written to: %s\n", outputPath)
 	return nil
 }
-
-// Unused import guard for hex (used in PKINITResult printing)
-var _ = hex.EncodeToString

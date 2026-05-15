@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-ldap/ldap/v3"
+	"github.com/loudmumble/trusted/pkg/util"
 )
 
 // OIDObject represents an msPKI-Enterprise-Oid object from the OID container
@@ -29,15 +30,8 @@ type ESC13Finding struct {
 	LinkedGroupName   string `json:"linked_group_name"` // CN
 }
 
-// buildOIDBaseDN constructs the LDAP base DN for the OID container under
-// CN=Public Key Services,CN=Services,CN=Configuration.
 func buildOIDBaseDN(domain string) string {
-	parts := strings.Split(domain, ".")
-	dcParts := make([]string, 0, len(parts))
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	return "CN=OID,CN=Public Key Services,CN=Services,CN=Configuration," + strings.Join(dcParts, ",")
+	return util.BuildLDAPBaseDN(domain, "CN=OID,CN=Public Key Services,CN=Services,CN=Configuration")
 }
 
 // cnFromDN extracts the first CN= value from a distinguished name.

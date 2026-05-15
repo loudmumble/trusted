@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/loudmumble/trusted/pkg/pki"
+	"github.com/loudmumble/trusted/pkg/util"
 )
 
 func ConnectLDAP(ctx context.Context, cfg *pki.ADCSConfig) (*ldap.Conn, error) {
@@ -274,12 +275,7 @@ func parseMSDSSIDs(msDS string) []SIDEntry {
 }
 
 func buildDomainDN(domain string) string {
-	parts := strings.Split(domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	return strings.Join(dcParts, ",")
+	return util.BuildDomainDN(domain)
 }
 
 func SetConstrainedDelegation(conn *ldap.Conn, targetDN, spn string) error {

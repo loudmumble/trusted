@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-ldap/ldap/v3"
+	"github.com/loudmumble/trusted/pkg/util"
 )
 
 // ResolveSAMAccountName searches LDAP for a user by sAMAccountName and returns
@@ -25,13 +26,7 @@ func ResolveSAMAccountName(cfg *ADCSConfig, samAccountName string) (string, erro
 	}
 	defer conn.Close()
 
-	// Build base DN from domain
-	parts := strings.Split(cfg.Domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	baseDN := strings.Join(dcParts, ",")
+	baseDN := util.BuildDomainDN(cfg.Domain)
 
 	searchReq := ldap.NewSearchRequest(
 		baseDN, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases,
@@ -94,7 +89,9 @@ func GenerateKeyCredential() (*KeyCredentialEntry, error) {
 	keyID := hex.EncodeToString(keyHash[:16])
 
 	deviceIDBytes := make([]byte, 16)
-	rand.Read(deviceIDBytes)
+	if _, err := rand.Read(deviceIDBytes); err != nil {
+		return nil, fmt.Errorf("generate device ID: %w", err)
+	}
 	deviceID := formatGUID(deviceIDBytes)
 
 	now := time.Now().UTC()

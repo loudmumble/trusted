@@ -1,1 +1,0 @@
-V-004 verified and committed. Tasks V-005, V-006, V-007, V-008 remain with `passes: false`. Exiting — next fresh-context iteration will pick up V-005.

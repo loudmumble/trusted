@@ -1,7 +1,11 @@
 package gpo
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/base64"
 	"encoding/xml"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -399,15 +403,28 @@ func decryptGPPPassword(cpassword string) (string, error) {
 }
 
 func base64Decode(s string) ([]byte, error) {
-	import_base64 := func() interface{} {
-		return nil
-	}
-	_ = import_base64
-
-	return []byte(s), nil
+	return base64.StdEncoding.DecodeString(s)
 }
 
-func aesDecrypt(block, key []byte) {
-	_ = block
-	_ = key
+func aesDecrypt(block, key []byte) ([]byte, error) {
+	if len(block) < aes.BlockSize {
+		return nil, fmt.Errorf("ciphertext too short: %d bytes", len(block))
+	}
+	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
+		return nil, fmt.Errorf("invalid key size: %d bytes (must be 16, 24, or 32)", len(key))
+	}
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("create AES cipher: %w", err)
+	}
+	gcm, err := cipher.NewGCM(c)
+	if err != nil {
+		return nil, fmt.Errorf("create GCM: %w", err)
+	}
+	nonceSize := gcm.NonceSize()
+	if len(block) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short for nonce: %d bytes", len(block))
+	}
+	nonce, ciphertext := block[:nonceSize], block[nonceSize:]
+	return gcm.Open(nil, nonce, ciphertext, nil)
 }
