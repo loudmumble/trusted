@@ -28,3 +28,9 @@ vendor/
 # OS
 .DS_Store
 Thumbs.db
+.claude/
+.opencode/
+.sisyphus/
+CLAUDE.md
+MANUALTESTING.md
+VERIFICATION_LEDGER.md
