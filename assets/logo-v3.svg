@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <linearGradient id="keyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#cba6f7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f38ba8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Key background -->
+  <rect width="400" height="400" fill="#11111b"/>
+  
+  <!-- Giant key -->
+  <g transform="translate(200, 180) rotate(-30)">
+    <!-- Key head -->
+    <circle cx="-60" cy="0" r="30" fill="none" stroke="url(#keyGrad)" stroke-width="4"/>
+    <circle cx="-60" cy="0" r="15" fill="url(#keyGrad)"/>
+    
+    <!-- Key shaft -->
+    <rect x="-30" y="-8" width="120" height="16" fill="url(#keyGrad)"/>
+    
+    <!-- Key teeth -->
+    <rect x="70" y="-8" width="8" height="24" fill="url(#keyGrad)"/>
+    <rect x="85" y="-8" width="8" height="20" fill="url(#keyGrad)"/>
+    <rect x="100" y="-8" width="8" height="16" fill="url(#keyGrad)"/>
+  </g>
+  
+  <!-- Certificate being unlocked -->
+  <g transform="translate(200, 280)">
+    <rect x="-40" y="-25" width="80" height="50" rx="5" fill="#1e1e2e" stroke="#cba6f7" stroke-width="2"/>
+    <text x="0" y="0" text-anchor="middle" fill="#cba6f7" font-family="monospace" font-size="10">CERT</text>
+    
+    <!-- Unlock animation -->
+    <circle cx="0" cy="-25" r="15" fill="none" stroke="#a6e3a1" stroke-width="2">
+      <animate attributeName="r" values="15;25;15" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;0;1" dur="2s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+  
+  <!-- Text -->
+  <text x="200" y="370" text-anchor="middle" fill="#cba6f7" font-family="monospace" font-size="28" font-weight="bold" letter-spacing="3">TRUSTED</text>
+  <text x="200" y="395" text-anchor="middle" fill="#45475a" font-family="monospace" font-size="9" letter-spacing="2">CERTIFICATE EXPLOITATION</text>
+</svg>

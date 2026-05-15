@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <linearGradient id="certGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#cba6f7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#94e2d5;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="chainGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f38ba8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#eba0ac;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <circle cx="200" cy="200" r="180" fill="#181825" stroke="#313244" stroke-width="2"/>
+  
+  <!-- PKI chain -->
+  <g stroke="#45475a" stroke-width="3" fill="none">
+    <line x1="200" y1="100" x2="200" y2="150"/>
+    <line x1="200" y1="180" x2="200" y2="230"/>
+    <line x1="200" y1="260" x2="200" y2="310"/>
+  </g>
+  
+  <!-- Root CA -->
+  <g transform="translate(200, 100)">
+    <rect x="-40" y="-20" width="80" height="40" rx="5" fill="url(#certGrad)" filter="url(#glow)"/>
+    <text x="0" y="5" text-anchor="middle" fill="#1e1e2e" font-family="monospace" font-size="10" font-weight="bold">ROOT CA</text>
+  </g>
+  
+  <!-- Intermediate CA -->
+  <g transform="translate(200, 180)">
+    <rect x="-40" y="-20" width="80" height="40" rx="5" fill="url(#certGrad)" opacity="0.8"/>
+    <text x="0" y="5" text-anchor="middle" fill="#1e1e2e" font-family="monospace" font-size="9" font-weight="bold">INTER CA</text>
+  </g>
+  
+  <!-- End certificate -->
+  <g transform="translate(200, 260)">
+    <rect x="-40" y="-20" width="80" height="40" rx="5" fill="url(#certGrad)" opacity="0.6"/>
+    <text x="0" y="5" text-anchor="middle" fill="#1e1e2e" font-family="monospace" font-size="8" font-weight="bold">END CERT</text>
+  </g>
+  
+  <!-- Exploit indicators -->
+  <g fill="#f38ba8" filter="url(#glow)">
+    <circle cx="280" cy="150" r="12">
+      <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <text x="280" y="154" text-anchor="middle" fill="#1e1e2e" font-family="monospace" font-size="14" font-weight="bold">!</text>
+    
+    <circle cx="120" cy="230" r="10">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <text x="120" y="234" text-anchor="middle" fill="#1e1e2e" font-family="monospace" font-size="12" font-weight="bold">⚠</text>
+  </g>
+  
+  <!-- Chain link break -->
+  <g stroke="#f38ba8" stroke-width="2" stroke-dasharray="4,4">
+    <line x1="180" y1="150" x2="220" y2="180"/>
+    <line x1="220" y1="150" x2="180" y2="180"/>
+  </g>
+  
+  <!-- Shield (representing trust) -->
+  <path d="M200 310 L220 320 L220 340 Q220 360 200 370 Q180 360 180 340 L180 320 Z" 
+        fill="none" stroke="#a6e3a1" stroke-width="2" filter="url(#glow)"/>
+  
+  <!-- Text: TRUSTED -->
+  <text x="200" y="395" text-anchor="middle" fill="#cba6f7" font-family="monospace" font-size="28" font-weight="bold" letter-spacing="3">TRUSTED</text>
+</svg>

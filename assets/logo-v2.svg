@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!-- Active Directory background -->
+  <rect width="400" height="400" fill="#11111b"/>
+  
+  <!-- AD tree structure -->
+  <g stroke="#45475a" stroke-width="1">
+    <line x1="200" y1="80" x2="200" y2="120"/>
+    <line x1="200" y1="120" x2="120" y2="160"/>
+    <line x1="200" y1="120" x2="280" y2="160"/>
+    <line x1="120" y1="160" x2="80" y2="200"/>
+    <line x1="120" y1="160" x2="160" y2="200"/>
+    <line x1="280" y1="160" x2="240" y2="200"/>
+    <line x1="280" y1="160" x2="320" y2="200"/>
+  </g>
+  
+  <!-- AD objects -->
+  <g fill="#cba6f7">
+    <circle cx="200" cy="80" r="15"/>
+    <rect x="105" y="145" width="30" height="30" rx="3"/>
+    <rect x="265" y="145" width="30" height="30" rx="3"/>
+    <circle cx="80" cy="200" r="10"/>
+    <circle cx="160" cy="200" r="10"/>
+    <circle cx="240" cy="200" r="10"/>
+    <circle cx="320" cy="200" r="10"/>
+  </g>
+  
+  <!-- Labels -->
+  <g fill="#6c7086" font-family="monospace" font-size="7" text-anchor="middle">
+    <text x="200" y="84">DC</text>
+    <text x="120" y="164">CA</text>
+    <text x="280" y="164">ADCS</text>
+  </g>
+  
+  <!-- Exploit paths -->
+  <g stroke="#f38ba8" stroke-width="2" stroke-dasharray="4,4">
+    <path d="M200 95 L120 145"/>
+    <path d="M120 175 L80 190"/>
+  </g>
+  
+  <!-- ESC labels -->
+  <g fill="#f38ba8" font-family="monospace" font-size="8">
+    <text x="60" y="170">ESC1</text>
+    <text x="140" y="190">ESC8</text>
+  </g>
+  
+  <!-- Text -->
+  <text x="200" y="280" text-anchor="middle" fill="#cba6f7" font-family="monospace" font-size="28" font-weight="bold" letter-spacing="3">TRUSTED</text>
+  <text x="200" y="305" text-anchor="middle" fill="#6c7086" font-family="monospace" font-size="10" letter-spacing="2">ADCS EXPLOITATION</text>
+  
+  <!--ESC indicators -->
+  <g fill="#f38ba8" font-family="monospace" font-size="10" opacity="0.6">
+    <text x="50" y="340">ESC1-ESC14</text>
+  </g>
+</svg>
