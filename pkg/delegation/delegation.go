@@ -2,7 +2,6 @@ package delegation
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"strings"
 )
@@ -92,103 +91,6 @@ type TicketResult struct {
 	CachePath  string
 }
 
-func ParseUserAccountControl(uac uint32) map[string]bool {
-	return map[string]bool{
-		"SCRIPT":                         uac&0x0001 != 0,
-		"ACCOUNTDISABLE":                 uac&0x0002 != 0,
-		"HOMEDIR_REQUIRED":               uac&0x0008 != 0,
-		"LOCKOUT":                        uac&0x0010 != 0,
-		"PASSWD_NOTREQD":                 uac&0x0020 != 0,
-		"PASSWD_CANT_CHANGE":             uac&0x0040 != 0,
-		"ENCRYPTED_PWD_ALLOWED":          uac&0x0080 != 0,
-		"TEMP_DUPLICATE_ACCOUNT":         uac&0x0100 != 0,
-		"NORMAL_ACCOUNT":                 uac&0x0200 != 0,
-		"MNS_LOGON_ACCOUNT":              uac&0x0400 != 0,
-		"INTERDOMAIN_TRUST":              uac&0x0800 != 0,
-		"WORKSTATION_TRUST":              uac&0x1000 != 0,
-		"SERVER_TRUST":                   uac&0x2000 != 0,
-		"DONT_EXPIRE_PASSWD":             uac&0x10000 != 0,
-		"ACCOUNT_AUTO_LOCKED":            uac&0x20000 != 0,
-		"ENCRYPTED_TEXT_PWD":             uac&0x40000 != 0,
-		"TRUSTED_FOR_DELEGATION":         uac&flagTrustedForDelegation != 0,
-		"TRUSTED_TO_AUTH_FOR_DELEGATION": uac&flagTrustedToAuthForDelegation != 0,
-		"DONT_REQ_PREAUTH":               uac&0x400000 != 0,
-		"PASSWORD_EXPIRED":               uac&0x800000 != 0,
-		"HAS_SPN":                        uac&0x10000000 != 0,
-		"USE_DES_KEY_ONLY":               uac&0x20000000 != 0,
-		"DONT_REQ_PREAUTH2":              uac&0x40000000 != 0,
-	}
-}
-
-func HasDelegationCapability(uac uint32) bool {
-	return uac&flagTrustedForDelegation != 0 || uac&flagTrustedToAuthForDelegation != 0
-}
-
-func BuildDelegationReport(targets []DelegationTarget) string {
-	var sb strings.Builder
-
-	sb.WriteString("# Delegation Analysis Report\n\n")
-
-	unconstrained := filterByType(targets, DelegationUnconstrained)
-	constrained := filterByType(targets, DelegationConstrained)
-	rbcd := filterByType(targets, DelegationResourceBased)
-
-	if len(unconstrained) > 0 {
-		sb.WriteString(fmt.Sprintf("## Unconstrained Delegation (%d)\n\n", len(unconstrained)))
-		for _, t := range unconstrained {
-			sb.WriteString(fmt.Sprintf("- **%s** (%s)\n", t.Name, t.DN))
-			if t.IsComputer {
-				sb.WriteString("  - Type: Computer\n")
-			} else {
-				sb.WriteString("  - Type: User\n")
-			}
-		}
-		sb.WriteString("\n")
-	}
-
-	if len(constrained) > 0 {
-		sb.WriteString(fmt.Sprintf("## Constrained Delegation (%d)\n\n", len(constrained)))
-		for _, t := range constrained {
-			sb.WriteString(fmt.Sprintf("- **%s** (%s)\n", t.Name, t.DN))
-			sb.WriteString(fmt.Sprintf("  - Allowed SPNs: %s\n", strings.Join(t.AllowedSPNs, ", ")))
-			sb.WriteString(fmt.Sprintf("  - Can impersonate: %s\n", strings.Join(t.DelegatedTo, ", ")))
-		}
-		sb.WriteString("\n")
-	}
-
-	if len(rbcd) > 0 {
-		sb.WriteString(fmt.Sprintf("## Resource-Based Constrained Delegation (%d)\n\n", len(rbcd)))
-		for _, t := range rbcd {
-			sb.WriteString(fmt.Sprintf("- **%s** (%s)\n", t.Name, t.DN))
-			if len(t.RBCDSIDs) > 0 {
-				sb.WriteString("  - Allowed SIDs:\n")
-				for _, sid := range t.RBCDSIDs {
-					sb.WriteString(fmt.Sprintf("    - %s (RID: %d)\n", sid.SID, sid.RID))
-				}
-			}
-		}
-		sb.WriteString("\n")
-	}
-
-	sb.WriteString("## Attack Paths\n\n")
-	sb.WriteString("1. **Unconstrained Delegation**: Monitor for TGTs on compromised hosts\n")
-	sb.WriteString("2. **Constrained Delegation**: Use S4U2Self/S4U2Proxy to impersonate users\n")
-	sb.WriteString("3. **RBCD**: Create machine account, add to target's msDS-AllowedToActOnBehalfOfOtherIdentity\n")
-	sb.WriteString("4. **SeEnableDelegationPrivilege**: Grant via GPO to enable delegation configuration\n")
-
-	return sb.String()
-}
-
-func filterByType(targets []DelegationTarget, dtype DelegationType) []DelegationTarget {
-	var result []DelegationTarget
-	for _, t := range targets {
-		if t.Type == dtype {
-			result = append(result, t)
-		}
-	}
-	return result
-}
-
 func ParseObjectSID(data []byte) (string, uint32) {
 	if len(data) < 8 {
 		return "", 0
@@ -253,10 +155,4 @@ func SIDToBytes(sidStr string) ([]byte, error) {
 	return sid, nil
 }
 
-func FormatSIDHex(sidStr string) (string, error) {
-	sidBytes, err := SIDToBytes(sidStr)
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(sidBytes), nil
-}
+

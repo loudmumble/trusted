@@ -322,6 +322,26 @@ func CreateMachineAccount(conn *ldap.Conn, domain, name, password string) (strin
 	return dn, nil
 }
 
+func FindComputerDN(conn *ldap.Conn, baseDN, samAccountName string) (string, error) {
+	searchReq := ldap.NewSearchRequest(
+		baseDN,
+		ldap.ScopeWholeSubtree,
+		ldap.NeverDerefAliases,
+		0, 0, false,
+		fmt.Sprintf("(&(objectClass=computer)(sAMAccountName=%s))", ldap.EscapeFilter(samAccountName)),
+		[]string{"distinguishedName"},
+		nil,
+	)
+	res, err := conn.Search(searchReq)
+	if err != nil {
+		return "", fmt.Errorf("search computer: %w", err)
+	}
+	if len(res.Entries) == 0 {
+		return "", fmt.Errorf("computer not found: %s", samAccountName)
+	}
+	return res.Entries[0].DN, nil
+}
+
 func DeleteMachineAccount(conn *ldap.Conn, dn string) error {
 	delReq := ldap.NewDelRequest(dn, nil)
 	return conn.Del(delReq)

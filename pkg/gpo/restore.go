@@ -149,10 +149,6 @@ func CleanupGPO(gpoGUID, sysvolPath, backupDir string) error {
 	return os.WriteFile(manifestPath, manifestData, 0600)
 }
 
-func RemoveGPOLink(conn interface{}, targetDN, gpoGUID, domain string) error {
-	return nil
-}
-
 func ListBackups(backupDir string) ([]BackupEntry, error) {
 	if backupDir == "" {
 		backupDir = "gpo_backups"

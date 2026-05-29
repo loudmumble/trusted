@@ -28,9 +28,14 @@ vendor/
 # OS
 .DS_Store
 Thumbs.db
-.claude/
-.opencode/
-.sisyphus/
-CLAUDE.md
-MANUALTESTING.md
-VERIFICATION_LEDGER.md
+
+# Internal planning docs (not for GitHub)
+/plans/
+/verification-ledger.md
+
+# Agent working files
+/.sisyphus/
+/.claude/
+/.opencode/
+/CLAUDE.md
+/MANUALTESTING.md

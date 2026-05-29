@@ -83,10 +83,10 @@ func TestBuildSteps_ESC1(t *testing.T) {
 	}
 	// Last step should be the trusted command
 	lastStep := steps[len(steps)-1]
-	if !strings.Contains(lastStep, "trusted pki --esc 1") {
+	if !strings.Contains(lastStep, "trusted esc 1") {
 		t.Errorf("ESC1 step should contain trusted command, got: %s", lastStep)
 	}
-	if !strings.Contains(lastStep, "--template VulnTemplate") {
+	if !strings.Contains(lastStep, "-t VulnTemplate") {
 		t.Errorf("ESC1 step should reference template name, got: %s", lastStep)
 	}
 }
@@ -105,15 +105,14 @@ func TestBuildSteps_ESC11_NtlmrelayxNotFabricated(t *testing.T) {
 		}
 	}
 
-	// Should use certipy-ad relay instead
 	found := false
 	for _, step := range steps {
-		if strings.Contains(step, "certipy-ad relay") {
+		if strings.Contains(step, "ted esc 11") || strings.Contains(step, "trusted esc 11") {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("ESC11 steps should suggest certipy-ad relay command")
+		t.Error("ESC11 steps should suggest `ted esc 11` command")
 	}
 }
 
@@ -130,12 +129,12 @@ func TestBuildSteps_ESC12_NtlmrelayxNotFabricated(t *testing.T) {
 
 	found := false
 	for _, step := range steps {
-		if strings.Contains(step, "certipy-ad relay") {
+		if strings.Contains(step, "ted esc 12") || strings.Contains(step, "trusted esc 12") {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("ESC12 steps should suggest certipy-ad relay command")
+		t.Error("ESC12 steps should suggest `ted esc 12` command")
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 )
 
 type BloodHoundNode struct {
@@ -227,26 +226,4 @@ func CorrelateGPOsWithBloodHound(gpos []GPO, bhData *BloodHoundData) []GPOBloodH
 	return results
 }
 
-func GenerateBloodHoundCypher(gpos []GPO) string {
-	var queries []string
 
-	for _, gpo := range gpos {
-		if gpo.HasWritableACL() {
-			queries = append(queries, fmt.Sprintf("// Find principals with write access to GPO %s\nMATCH (n)-[:WriteDacl|WriteOwner|GenericAll|GenericWrite]->(g:GroupPolicyObject {objectid: '%s'}) RETURN n, g", gpo.Name, gpo.GUID))
-		}
-
-		if gpo.IsLinkedToDC() {
-			queries = append(queries, fmt.Sprintf("// Find computers affected by GPO %s linked to DC\nMATCH (g:GroupPolicyObject {objectid: '%s'})-[:GpLink]->(ou:OU)-[:Contains]->(c:Computer) RETURN g, ou, c", gpo.Name, gpo.GUID))
-		}
-	}
-
-	return fmt.Sprintf("// Trusted GPO Analysis Queries\n// Generated: %s\n\n%s", time.Now().Format("2006-01-02 15:04:05"), joinQueries(queries))
-}
-
-func joinQueries(queries []string) string {
-	result := ""
-	for _, q := range queries {
-		result += q + "\n\n"
-	}
-	return result
-}

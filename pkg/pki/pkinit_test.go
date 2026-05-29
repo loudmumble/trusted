@@ -31,9 +31,9 @@ func TestPrintPKINITCommands_WithPFX(t *testing.T) {
 
 	out := captureStdout(t, func() { PrintPKINITCommands(info) })
 
-	// certipy-ad command
-	if !strings.Contains(out, "certipy-ad auth -pfx /tmp/admin.pfx -dc-ip <DC_IP> -domain corp.local") {
-		t.Error("missing or incorrect certipy-ad auth command")
+	// Native PKINIT auth command
+	if !strings.Contains(out, "trusted --pkinit -pfx /tmp/admin.pfx") {
+		t.Error("missing or incorrect native PKINIT auth command")
 	}
 	// Rubeus — must use sAMAccountName (admin), not full UPN
 	if !strings.Contains(out, "Rubeus.exe asktgt /user:admin /certificate:/tmp/admin.pfx /ptt /getcredentials") {

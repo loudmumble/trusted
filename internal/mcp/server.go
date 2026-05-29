@@ -27,11 +27,19 @@ const (
 // Server is the MCP stdio server wrapping Trusted capabilities.
 type Server struct {
 	listener *c2.Listener
+	ipcAddr  string // address of the C2 IPC server
 }
 
 // NewServer creates an MCP server optionally backed by a running C2 listener.
+// The C2 tools talk to the listener's local IPC REST API.  When passed a
+// listener with a non-zero IPCPort (e.g. after Start() resolved a dynamic
+// port), that address is used; otherwise "127.0.0.1:24242" is the default.
 func NewServer(listener *c2.Listener) *Server {
-	return &Server{listener: listener}
+	ipcAddr := "127.0.0.1:24242"
+	if listener != nil && listener.IPCPort != 0 {
+		ipcAddr = fmt.Sprintf("127.0.0.1:%d", listener.IPCPort)
+	}
+	return &Server{listener: listener, ipcAddr: ipcAddr}
 }
 
 // Serve runs the MCP protocol loop reading JSON-RPC from in, writing to out.
@@ -246,9 +254,9 @@ func (s *Server) runPKIForge(args map[string]interface{}) map[string]interface{}
 }
 
 func (s *Server) runC2ListSessions(_ map[string]interface{}) map[string]interface{} {
-	resp, err := http.Get("http://127.0.0.1:24242/api/sessions")
+	resp, err := http.Get("http://" + s.ipcAddr + "/api/sessions")
 	if err != nil {
-		return toolError("No C2 listener running locally on port 24242. Start with 'trusted c2' first.")
+		return toolError("No C2 listener running at " + s.ipcAddr + ". Start with 'trusted c2' first.")
 	}
 	defer resp.Body.Close()
 
@@ -279,9 +287,9 @@ func (s *Server) runC2QueueCommand(args map[string]interface{}) map[string]inter
 	}
 	data, _ := json.Marshal(payload)
 
-	resp, err := http.Post("http://127.0.0.1:24242/api/command", "application/json", bytes.NewReader(data))
+	resp, err := http.Post("http://"+s.ipcAddr+"/api/command", "application/json", bytes.NewReader(data))
 	if err != nil {
-		return toolError("No C2 listener running locally on port 24242. Start with 'trusted c2' first.")
+		return toolError("No C2 listener running at " + s.ipcAddr + ". Start with 'trusted c2' first.")
 	}
 	defer resp.Body.Close()
 
@@ -298,14 +306,14 @@ func (s *Server) runC2QueueCommand(args map[string]interface{}) map[string]inter
 
 func (s *Server) runC2GetResults(args map[string]interface{}) map[string]interface{} {
 	sessionID, _ := args["session_id"].(string)
-	url := "http://127.0.0.1:24242/api/results"
+	url := "http://" + s.ipcAddr + "/api/results"
 	if sessionID != "" {
 		url += "?session_id=" + sessionID
 	}
 
 	resp, err := http.Get(url)
 	if err != nil {
-		return toolError("No C2 listener running locally on port 24242. Start with 'trusted c2' first.")
+		return toolError("No C2 listener running at " + s.ipcAddr + ". Start with 'trusted c2' first.")
 	}
 	defer resp.Body.Close()
 

@@ -187,7 +187,10 @@ func TestListener_HandleQueueCommand_SessionNotFound(t *testing.T) {
 }
 
 func TestGenerateStagerConfig(t *testing.T) {
-	stager := GenerateStagerConfig("https://c2.example.com:8443")
+	stager, err := GenerateStagerConfig("https://c2.example.com:8443")
+	if err != nil {
+		t.Fatalf("GenerateStagerConfig failed: %v", err)
+	}
 
 	if stager.C2URL != "https://c2.example.com:8443" {
 		t.Errorf("Expected C2URL, got %s", stager.C2URL)

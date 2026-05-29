@@ -294,14 +294,15 @@ func TestCallTool_PKIForge_HappyPath(t *testing.T) {
 }
 
 func TestCallTool_C2ListSessions_WithListener(t *testing.T) {
-	// Start a real listener on a random port so maps are initialized
 	listener := &c2.Listener{
 		BindAddress: "127.0.0.1",
 		Port:        0,
 		Protocol:    "http",
+		IPCPort:     24243, // distinct from default 24242 to avoid polluting NoListener tests
 	}
 	go listener.Start()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+	defer listener.Close()
 
 	s := NewServer(listener)
 	result := s.callTool("c2_list_sessions", map[string]interface{}{})
@@ -323,9 +324,11 @@ func TestCallTool_C2QueueCommand_WithListener_SessionNotFound(t *testing.T) {
 		BindAddress: "127.0.0.1",
 		Port:        0,
 		Protocol:    "http",
+		IPCPort:     24244, // distinct from both default 24242 and first test 24243
 	}
 	go listener.Start()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+	defer listener.Close()
 
 	s := NewServer(listener)
 	result := s.callTool("c2_queue_command", map[string]interface{}{

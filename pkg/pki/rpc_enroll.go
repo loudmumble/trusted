@@ -166,7 +166,12 @@ func parseCertServerResponse(resp []byte) ([]byte, uint32, error) {
 	}
 	disposition := binary.LittleEndian.Uint32(stub[4:8])
 	offset := 8
-	_, offset, _ = readCertTransBlob(stub, offset)
+	var skipBlob []byte
+	skipBlob, offset, err = readCertTransBlob(stub, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("skip request ID blob: %w", err)
+	}
+	_ = skipBlob
 	certData, _, err := readCertTransBlob(stub, offset)
 	return certData, disposition, err
 }

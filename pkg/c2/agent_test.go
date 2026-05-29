@@ -66,15 +66,17 @@ func TestAgentIntegration(t *testing.T) {
 	port := ln.Addr().(*net.TCPAddr).Port
 	ln.Close()
 
-	// Start listener
+	// Start listener (use distinct IPC port to avoid polluting MCP NoListener tests)
 	listener := &Listener{
 		BindAddress: "127.0.0.1",
 		Port:        port,
 		Protocol:    "http",
+		IPCPort:     24245,
 	}
 
 	go listener.Start()
 	time.Sleep(200 * time.Millisecond)
+	defer listener.Close()
 
 	// Write agent config
 	dir := t.TempDir()

